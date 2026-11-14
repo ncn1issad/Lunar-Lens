@@ -1,8 +1,16 @@
 # Lunar Lense
 
-A pnpm workspace with a Hono API on Cloudflare Workers and a Vite, React, and TypeScript frontend served through Workers Static Assets. The frontend is the default Vite starter.
+A pnpm workspace with a Hono API on Cloudflare Workers and a Vite, React, and TypeScript frontend served through Workers Static Assets. The frontend shows a textured 3D Moon on a black background. Drag to rotate and scroll or pinch to zoom. The globe uses Three.js and a locally packaged NASA LROC texture; terrain displacement and timeline controls are not implemented yet.
 
-The API currently returns one midnight sample of Earth's and the Sun's apparent azimuth and elevation from NASA/JPL Horizons for a lunar surface observer. Time-series responses and lunar terrain profiles are future work. The original `moon_horizon.py` remains available at the repository root.
+The home page reads the browser clock to calculate current sunlight, phase, and lunar orientation with [Astronomy Engine](https://github.com/cosinekitty/astronomy). It starts with an Earth-centred, lunar-north-up view, refreshes every minute and on tab return, and preserves camera interaction. No API call or location permission is required. The view does not include the tilt relative to a local observer's horizon or eclipse shadows. Other uses of `MoonGlobe` remain evenly lit unless its `live` prop is enabled.
+
+The API returns Earth's and the Sun's apparent azimuth and elevation from NASA/JPL Horizons for a lunar observer. `/api/timeline` combines timestamped position tables with a terrain skyline and terrain-aware visibility, as JSON or CSV. `/api/moon` remains available for the terrain profile alone. The original `/api/horizon` endpoint and `moon_horizon.py` retain their single-date, flat-horizon behavior.
+
+See [TODO.md](TODO.md) for the agreed final API, terrain calculation and data-loading plans, implementation priorities, and open decisions. It records the relevant earlier chat discussions so future work can start here.
+
+See [Terrain profiles](docs/terrain.md) for `/api/moon`, its JSON/CSV contract, Marius Hills coverage, data preparation, and sampling limits. For example, `/api/moon?longitude=303&latitude=14` calculates a skyline from native-resolution SLDEM2015 tiles. The packaged terrain covers 12 to 16 degrees north and 301 to 305 degrees east; the full search circle must fit inside that region.
+
+See [Moon rendering data](docs/moon-rendering-data.md) for researched global textures, elevation maps, QuickMap mesh endpoints, and a proposed data plan for the 3D interface.
 
 ## Structure
 
@@ -12,7 +20,7 @@ apps/
     src/                 Hono routes, validation and Horizons client
     test/                Offline fixtures and API/runtime tests
     wrangler.jsonc       Worker and static asset configuration
-  web/                   Default Vite React TypeScript starter
+  web/                   React TypeScript frontend with a Three.js Moon globe
 packages/
   contracts/             Shared API request and response types
 ```
@@ -68,7 +76,7 @@ The deployed frontend and API share an origin:
 
 The API and frontend remain separate workspace packages. They can be deployed separately later. A separate frontend origin would also need an API URL and CORS configuration.
 
-## Request
+## Single-date request
 
 ```sh
 curl 'http://localhost:8787/api/horizon?date=2026-11-14&longitude=23.5&latitude=-10'
@@ -94,6 +102,58 @@ The JSON response contains `date`, `time`, `timeScale`, `observer`, `positions.e
 
 `GET /api/health` returns `{"status":"ok"}` without contacting NASA.
 
+## Timeline and CSV downloads
+
+```sh
+curl 'http://localhost:8787/api/timeline?start=2026-11-14&end=2026-11-15&longitude=303&latitude=14&stepMinutes=60&eyeHeightM=2'
+```
+
+This returns 25 hourly samples per body, including midnight at both ends, and one shared terrain skyline. `/api/timeline` and `/api/moon` use the same terrain service without an HTTP call between endpoints. The existing `/api/horizon` endpoint keeps its original behavior.
+
+| Parameter | Required | Meaning and limits |
+| --- | --- | --- |
+| `start` | Yes | Gregorian date `YYYY-MM-DD` (midnight UTC) or full UTC timestamp `YYYY-MM-DDTHH:mm:ssZ`; years 1962 through 2649 |
+| `end` | Yes | Same format as `start`; must be after it, with a range of at most 366 days |
+| `longitude` | Yes | Lunar longitude in degrees, east positive, -180 through 360 |
+| `latitude` | Yes | Lunar latitude in degrees, north positive, -90 through 90 |
+| `stepMinutes` | No | Whole number of minutes, 1 through 527040; defaults to 60 |
+| `eyeHeightM` | No | Height above terrain, 0.1 through 1000 metres; defaults to 2 |
+| `azimuthStepDeg` | No | Skyline spacing, 0.25 through 10 degrees; must divide 360 into a whole number of directions; defaults to 0.5 |
+| `maxDistanceM` | No | Terrain search radius, 100 through 120000 metres; defaults to 30000; terrain coverage and calculation budgets also apply |
+| `format` | No | `json` (default) or `csv` |
+
+Unknown or repeated parameters are rejected. At most 10,000 samples per body are allowed. The first sample is at `start`; subsequent samples advance by `stepMinutes`, up to and including `end` only when it falls on the sample grid. A range shorter than one step produces one sample. Invalid calendar dates, timezone offsets, fractional seconds, leap-second inputs, and pre-1962 dates are rejected by this endpoint. The original single-date endpoint still supports its historical UT1 behavior.
+
+The prepared terrain covers Marius Hills, 12 to 16 degrees north and 301 to 305 degrees east, and the full search circle must fit. The example at 14 north, 303 east works with the default radius. Unsupported locations return `422 TERRAIN_OUT_OF_COVERAGE` before any NASA request. There is no flat-horizon fallback. Terrain tiles are loaded once and one skyline is calculated per request, then reused for every timestamp.
+
+`altitudeKm` is now computed from interpolated ground elevation plus `eyeHeightM`, and the same altitude is sent to Horizons. It is no longer accepted as an independent query parameter. Both calculations use the DE421 lunar mean-Earth frame and a 1737.4 km reference sphere. JPL documents that observer frame in its [coordinate definitions](https://ssd.jpl.nasa.gov/horizons/manual.html#observer) and [lunar frame description](https://ssd.jpl.nasa.gov/horizons/manual.html#reference-frames). Timeline dates are restricted to 1962 through 2649 to stay within UTC and the high-precision lunar model's interval. The parser also checks each NASA response's observer frame and spherical radii, and rejects incompatible or fallback models.
+
+The JSON response has this structure:
+
+- `timeScale`: `"UTC"`.
+- `range`: normalized `start` and `end`, `stepMinutes`, and `sampleCount` per body.
+- `observer`: `body: "moon"`, normalized `longitudeDeg`, `latitudeDeg`, `groundElevationM`, `eyeHeightM`, and derived `altitudeKm`.
+- `moon`: the same `horizon`, `terrain` provenance, and `calculation` metadata returned by `/api/moon` for the same inputs.
+- `positions.earth` and `positions.sun`: aligned arrays, each row containing `timestamp`, `azimuthDeg`, `elevationDeg`, `terrainHorizonElevationDeg`, and `isVisible`.
+- `visibilityModel`: `"terrain"`. Each body's center is visible when `elevationDeg >= terrainHorizonElevationDeg`. The skyline is linearly interpolated at the body's azimuth, including across north. Negative skyline elevations are preserved; disk size and partial disk visibility are not included.
+- `source`: `"NASA/JPL Horizons"`.
+
+Timestamps are preserved from NASA's output and normalized to UTC `YYYY-MM-DDTHH:mm:ssZ`. Missing, duplicate, shifted, or malformed samples cause a `502 HORIZONS_ERROR` rather than a partial or misaligned result. NASA may reject dates outside its ephemeris coverage even when they pass input validation.
+
+Add `format=csv` to get a file attachment. Browsers download the file; with curl, `-OJ` saves it under the response's filename:
+
+```sh
+curl -OJ 'http://localhost:8787/api/timeline?start=2026-11-14&end=2026-11-15&longitude=303&latitude=14&stepMinutes=60&eyeHeightM=2&format=csv'
+```
+
+The response uses `Content-Type: text/csv; charset=utf-8` and `Content-Disposition: attachment; filename="lunar-lense-timeline-2026-11-14-2026-11-15.csv"`. CSV has one row per timestamp, with Earth and Sun columns together, including the skyline elevation used for each visibility flag. Its header is:
+
+```csv
+timestamp,timeScale,longitudeDeg,latitudeDeg,altitudeKm,visibilityModel,earthAzimuthDeg,earthElevationDeg,earthIsVisible,sunAzimuthDeg,sunElevationDeg,sunIsVisible,groundElevationM,eyeHeightM,terrainDatasetId,terrainReferenceFrame,azimuthStepDeg,maxDistanceM,earthTerrainHorizonElevationDeg,sunTerrainHorizonElevationDeg
+```
+
+Both formats use the same combined dataset and terrain-aware visibility rules. The full skyline is available in timeline JSON or through `/api/moon`, whose CSV contains one row per compass direction. Errors remain JSON and do not have an attachment header. Each successful timeline request makes two sequential NASA range calls total, regardless of sample count. There is no persistent cache, so requesting JSON and then CSV recalculates the skyline and makes another pair of calls. A future interface can export its already loaded data locally and move its slider without new API calls. No timeline interface is implemented yet.
+
 ## Errors and upstream coordination
 
 ```json
@@ -109,15 +169,18 @@ The JSON response contains `date`, `time`, `timeScale`, `observer`, `positions.e
 | --- | --- | --- |
 | 400 | `INVALID_INPUT` | Missing or invalid query parameters |
 | 404 | `NOT_FOUND` | Unknown API route |
+| 422 | `TERRAIN_OUT_OF_COVERAGE` | Observer/search circle exceeds prepared coverage or calculation budgets |
+| 422 | `TERRAIN_MISSING_DATA` | A required terrain height is missing or invalid |
+| 503 | `TERRAIN_UNAVAILABLE` | Terrain assets are absent, corrupt, or unavailable |
 | 502 | `HORIZONS_ERROR` | Upstream HTTP, network, JSON, or ephemeris failure |
 | 504 | `HORIZONS_TIMEOUT` | An upstream request exceeded 45 seconds |
 | 500 | `INTERNAL_ERROR` | Unexpected application failure |
 
 The Horizons client serializes Earth and Sun calls and concurrent callers within one Worker instance. This is a private prototype setup. Cloudflare may run multiple instances, even for overlapping requests from one user, so this queue does not guarantee one upstream request at a time across the deployment.
 
-Before public use, add shared coordination, for example a named Durable Object, to meet [JPL's API policy](https://ssd-api.jpl.nasa.gov/doc/index.php). No Durable Objects, SQLite databases, or storage bindings are provisioned by the current configuration.
+Before public use, add shared coordination, for example a named Durable Object, to meet [JPL's API policy](https://ssd-api.jpl.nasa.gov/doc/index.php). No Durable Objects, SQLite databases, or object storage are provisioned. Prepared terrain uses the existing `ASSETS` binding.
 
-There is no result cache yet. Each successful request makes two upstream calls, so it can take up to about 90 seconds, plus time spent waiting for earlier requests in the same instance.
+There is no result cache yet. Each successful single-date or timeline request makes two upstream calls, so it can take up to about 90 seconds, plus time spent waiting for earlier requests in the same instance. Both endpoints share the instance-local queue.
 
 ## Verification
 
@@ -127,6 +190,6 @@ pnpm typecheck
 pnpm lint
 ```
 
-`pnpm test` builds both apps before running offline tests. The suite checks the existing endpoint behavior and the bundled Worker in Cloudflare's local runtime. NASA responses are mocked, so tests do not contact the live service. Runtime tests dispose of their local instances after completion.
+`pnpm test` builds both apps before running offline tests. The suite checks single-date and timeline queries, JSON/CSV agreement, validation, upstream failures, shared request serialization, and the bundled Worker in Cloudflare's local runtime. NASA responses are mocked using captured fixtures, so tests do not contact the live service. Runtime tests dispose of their local instances after completion.
 
 See [Hono on Workers](https://hono.dev/docs/getting-started/cloudflare-workers), [Workers SPA routing](https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/), and [Horizons documentation](https://ssd-api.jpl.nasa.gov/doc/horizons.html).
