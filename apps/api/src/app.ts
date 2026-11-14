@@ -3,18 +3,21 @@ import type { HorizonQuery, HorizonResponse, Positions } from '@lunar-lense/cont
 import { createHorizonsClient, HorizonsError } from './horizons.js';
 import { InvalidInputError, parseHorizonQuery } from './validation.js';
 import { createMoonRoutes } from './terrain/routes.js';
+import { registerTimelineRoute, type GetTimeline } from './timeline.js';
 import { TerrainError } from './terrain/errors.js';
 import type { AssetFetcher } from './terrain/loader.js';
 import type { TerrainBindings } from './terrain/service.js';
 
 interface AppOptions {
   getPositions?: (query: HorizonQuery) => Promise<Positions>;
+  getTimeline?: GetTimeline;
   fetchTerrainAsset?: AssetFetcher;
 }
 
 export function buildApp(options: AppOptions = {}) {
   const app = new Hono<{ Bindings: TerrainBindings }>();
-  const getPositions = options.getPositions ?? createHorizonsClient();
+  const client = createHorizonsClient();
+  const getPositions = options.getPositions ?? client;
 
   app.onError((error, c) => {
     if (error instanceof InvalidInputError) {
@@ -37,6 +40,8 @@ export function buildApp(options: AppOptions = {}) {
 
   app.get('/api/health', (c) => c.json({ status: 'ok' }));
   app.route('/api/moon', createMoonRoutes(options.fetchTerrainAsset));
+
+  registerTimelineRoute(app, options.getTimeline ?? client.timeline, options.fetchTerrainAsset);
 
   app.get('/api/horizon', async (c) => {
     const query = parseHorizonQuery(new URL(c.req.url).searchParams);

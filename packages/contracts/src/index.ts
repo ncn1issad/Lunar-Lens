@@ -37,4 +37,8 @@ export interface ApiError {
   };
 }
 
+export type {
+  TimelineQuery, TimelineEphemerisQuery, TimedPosition, TimelinePositions,
+  TerrainTimedPosition, TerrainTimelinePositions, TimelineResponse,
+} from './timeline.js';
 export type { MoonQuery, MoonResponse, TerrainManifest, TerrainHorizonSample } from './terrain.js';

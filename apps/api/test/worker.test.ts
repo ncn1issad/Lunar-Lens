@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { createFetchMock, Miniflare } from 'miniflare';
-import type { ApiError, HorizonResponse } from '@lunar-lense/contracts';
+import type { ApiError, HorizonResponse, TimelineResponse } from '@lunar-lense/contracts';
 
 const config = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
 const fixture = async (name: string) => JSON.parse(
@@ -12,23 +12,32 @@ const fixture = async (name: string) => JSON.parse(
 const earth = await fixture('earth');
 const sun = await fixture('sun');
 const expected = await fixture('expected');
+const timelineEarth = await fixture('timeline-earth');
+const timelineSun = await fixture('timeline-sun');
 const horizonUrl = 'http://localhost/api/horizon?date=2026-11-14&longitude=23.5&latitude=-10';
+const timelineUrl = 'http://localhost/api/timeline?start=2026-11-14T00:00:00Z&end=2026-11-14T02:00:00Z&longitude=303&latitude=14';
 
 test('bundled Worker preserves API behavior and static asset routing', { timeout: 30_000 }, async (t) => {
   const commands: string[] = [];
+  const timelineSites: string[] = [];
   let failNext = false;
   const fetchMock = createFetchMock();
   fetchMock.disableNetConnect();
   fetchMock.get('https://ssd.jpl.nasa.gov')
     .intercept({ path: /^\/api\/horizons\.api\?/, method: 'GET' })
     .reply((request) => {
-      const command = new URL(request.path, 'https://ssd.jpl.nasa.gov').searchParams.get('COMMAND')!;
+      const params = new URL(request.path, 'https://ssd.jpl.nasa.gov').searchParams;
+      const command = params.get('COMMAND')!;
       commands.push(command);
+      if (params.has('START_TIME')) timelineSites.push(params.get('SITE_COORD')!);
       if (failNext) {
         failNext = false;
         return { statusCode: 503, data: 'upstream unavailable' };
       }
-      return { statusCode: 200, data: JSON.stringify(command === "'399'" ? earth : sun) };
+      const payload = params.has('START_TIME')
+        ? (command === "'399'" ? timelineEarth : timelineSun)
+        : (command === "'399'" ? earth : sun);
+      return { statusCode: 200, data: JSON.stringify(payload) };
     })
     .delay(10)
     .persist();
@@ -39,6 +48,7 @@ test('bundled Worker preserves API behavior and static asset routing', { timeout
     compatibilityDate: config.compatibility_date,
     fetchMock,
     assets: {
+      binding: config.assets.binding,
       directory: fileURLToPath(new URL(config.assets.directory, new URL('../', import.meta.url))),
       routerConfig: {
         has_user_worker: true,
@@ -89,10 +99,47 @@ test('bundled Worker preserves API behavior and static asset routing', { timeout
     assert.deepEqual(commands.splice(0), ["'399'", "'10'"]);
   });
 
-  await t.test('serializes overlapping requests in one instance', async () => {
+  await t.test('returns a complete timeline and CSV download through the bundled Worker', async () => {
+    const response = await runtime.dispatchFetch(timelineUrl);
+    assert.equal(response.status, 200);
+    const timeline = await response.json() as TimelineResponse;
+    assert.equal(timeline.range.sampleCount, 3);
+    assert.deepEqual(timeline.positions.earth.map((row) => row.timestamp), [
+      '2026-11-14T00:00:00Z', '2026-11-14T01:00:00Z', '2026-11-14T02:00:00Z',
+    ]);
+    assert.equal(timeline.positions.sun[0]!.isVisible, false);
+    assert.equal(timeline.visibilityModel, 'terrain');
+    assert.equal(timeline.moon.horizon.length, 720);
+    assert.equal(timeline.observer.altitudeKm,
+      (timeline.observer.groundElevationM + timeline.observer.eyeHeightM) / 1000);
+    for (const position of [...timeline.positions.earth, ...timeline.positions.sun]) {
+      assert.equal(position.isVisible, position.elevationDeg >= position.terrainHorizonElevationDeg);
+    }
+    const download = await runtime.dispatchFetch(`${timelineUrl}&format=csv`, {
+      headers: { 'Sec-Fetch-Mode': 'navigate' },
+    });
+    assert.equal(download.status, 200);
+    assert.equal(download.headers.get('content-type'), 'text/csv; charset=utf-8');
+    assert.match(download.headers.get('content-disposition')!, /^attachment; filename=".*\.csv"$/);
+    const lines = (await download.text()).trim().split('\r\n');
+    assert.equal(lines.length, 4);
+    assert.match(lines[0]!, /^timestamp,timeScale,/);
+    assert.match(lines[1]!, /^2026-11-14T00:00:00Z,UTC,/);
+    assert.equal(timelineSites.length, 4);
+    assert.ok(timelineSites.every(site => site === `'303,14,${timeline.observer.altitudeKm}'`));
+    assert.deepEqual(commands.splice(0), ["'399'", "'10'", "'399'", "'10'"]);
+
+    const invalid = await runtime.dispatchFetch(`${timelineUrl}&stepMinutes=0&format=csv`);
+    assert.equal(invalid.status, 400);
+    assert.equal(invalid.headers.get('content-disposition'), null);
+    assert.equal((await invalid.json() as ApiError).error.code, 'INVALID_INPUT');
+    assert.deepEqual(commands, []);
+  });
+
+  await t.test('serializes overlapping timeline and single-sample requests in one instance', async () => {
     const responses = await Promise.all([
       runtime.dispatchFetch(horizonUrl),
-      runtime.dispatchFetch(horizonUrl),
+      runtime.dispatchFetch(timelineUrl),
     ]);
     for (const response of responses) {
       assert.equal(response.status, 200);

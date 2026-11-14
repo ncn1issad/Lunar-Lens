@@ -2,8 +2,8 @@
 
 `GET /api/moon` calculates a terrain skyline without contacting Horizons. The
 response contains `observer` and `moon.horizon`, plus the terrain provenance and
-calculation settings. It calculates one terrain profile independently of the
-Earth/Sun ephemeris client. Connecting visibility to a time series is follow-up work.
+calculation settings. `/api/timeline` now uses this same terrain service to
+calculate Earth/Sun visibility, while `/api/moon` remains independently available.
 
 ```sh
 curl 'http://localhost:8787/api/moon?longitude=303&latitude=14'
@@ -151,11 +151,38 @@ integrity manifest is available in JSON.
 
 ## Timeline integration
 
-The terrain service can be reused by a future timeline endpoint. Its
-`interpolateSkyline` and `terrainVisibility` helpers interpolate across north and
-compare a body's center with the skyline at its azimuth. The observer height is
-ground elevation plus eye height, expressed above the 1737.4 km DE421 mean-Earth
-reference sphere. Verify the ephemeris observer frame before combining results.
+`apps/api/src/terrain/service.ts` shares data loading and profile calculation
+between `/api/moon` and `/api/timeline`, without making HTTP calls between routes.
+`apps/api/src/terrain/profile.ts` exports `interpolateSkyline` and
+`terrainVisibility`, used by the timeline and its exports. The helpers linearly
+interpolate the periodic skyline, including across 360/0 degrees, and apply the
+agreed body-centre rule:
+
+```ts
+isVisible = elevationDeg >= terrainHorizonElevationDeg;
+```
+
+The timeline accepts the same `eyeHeightM`, `azimuthStepDeg`, and `maxDistanceM`
+parameters as the Moon endpoint. It derives `altitudeKm` from ground elevation
+plus eye height and sends that height to Horizons; an independent `altitudeKm`
+query parameter is rejected to avoid inconsistent observers.
+
+JPL's [observer coordinate documentation](https://ssd.jpl.nasa.gov/horizons/manual.html#observer)
+and [lunar mean-Earth frame description](https://ssd.jpl.nasa.gov/horizons/manual.html#reference-frames)
+identify the Moon's high-precision observer frame as mean Earth of DE421. This
+matches the prepared DEM, and both use the 1737.4 km sphere. On that sphere,
+planetodetic and planetocentric latitudes coincide. No extra rotation is needed
+for this combination. Horizons can fall back to the IAU lunar model outside its
+high-precision interval, so the timeline accepts only years 1962 through 2649
+and verifies that each upstream response identifies the Moon, a supported
+mean-Earth frame (`MEAN_ME` or `MOON_ME`), and three 1737.4 km radii.
+
+One skyline is calculated per timeline request and reused for every timestamp.
+Timeline JSON includes the same `moon` object as this endpoint, plus a
+`terrainHorizonElevationDeg` for each Earth/Sun row. JSON and CSV use the same
+terrain-aware flags, labeled `visibilityModel: "terrain"`. Unsupported coverage
+and terrain failures remain explicit errors, with no flat-horizon fallback.
+The original `/api/horizon` endpoint retains its single-date, flat-horizon behavior.
 
 Polar data preparation, additional coverage, a final accuracy target and the
 interactive frontend remain future work.
