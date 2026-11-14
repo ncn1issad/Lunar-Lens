@@ -14,6 +14,7 @@ const sun = await fixture('sun');
 const expected = await fixture('expected');
 const timelineEarth = await fixture('timeline-earth');
 const timelineSun = await fixture('timeline-sun');
+const imageryJpeg = await readFile(new URL('./fixtures/wac-global-z0-x0-y0.jpg', import.meta.url));
 const horizonUrl = 'http://localhost/api/horizon?date=2026-11-14&longitude=23.5&latitude=-10';
 const timelineUrl = 'http://localhost/api/timeline?start=2026-11-14T00:00:00Z&end=2026-11-14T02:00:00Z&longitude=303&latitude=14';
 
@@ -21,6 +22,7 @@ test('bundled Worker preserves API behavior and static asset routing', { timeout
   const commands: string[] = [];
   const timelineSites: string[] = [];
   let failNext = false;
+  let imageryCalls = 0;
   const fetchMock = createFetchMock();
   fetchMock.disableNetConnect();
   fetchMock.get('https://ssd.jpl.nasa.gov')
@@ -41,6 +43,35 @@ test('bundled Worker preserves API behavior and static asset routing', { timeout
     })
     .delay(10)
     .persist();
+
+  fetchMock.get('https://trek.nasa.gov')
+    .intercept({
+      path: '/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/1/0/3.jpg',
+      method: 'GET',
+    })
+    .reply(() => {
+      imageryCalls++;
+      return { statusCode: 200, data: imageryJpeg, responseOptions: { headers: { 'Content-Type': 'image/jpeg' } } };
+    })
+    .persist();
+  fetchMock.get('https://trek.nasa.gov')
+    .intercept({
+      path: '/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/1/0/2.jpg',
+      method: 'GET',
+    })
+    .reply(404, '<html>Tile not found</html>', { headers: { 'Content-Type': 'text/html' } });
+  fetchMock.get('https://trek.nasa.gov')
+    .intercept({
+      path: '/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/1/0/1.jpg',
+      method: 'GET',
+    })
+    .reply(503, '<html>Unavailable</html>', { headers: { 'Content-Type': 'text/html' } });
+  fetchMock.get('https://trek.nasa.gov')
+    .intercept({
+      path: '/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/1/0/0.jpg',
+      method: 'GET',
+    })
+    .reply(302, '', { headers: { Location: 'https://example.com/unregistered-source.jpg' } });
 
   const runtime = new Miniflare({
     modules: true,
@@ -97,6 +128,41 @@ test('bundled Worker preserves API behavior and static asset routing', { timeout
     assert.equal(response.status, 200);
     assert.deepEqual((await response.json() as HorizonResponse).positions, expected);
     assert.deepEqual(commands.splice(0), ["'399'", "'10'"]);
+  });
+
+  await t.test('serves imagery metadata and unchanged JPEG bytes through the bundled Worker', async () => {
+    const metadata = await runtime.dispatchFetch('http://localhost/api/imagery/layers/wac-global');
+    assert.equal(metadata.status, 200);
+    const layer = await metadata.json() as { tileUrlTemplate: string; levelZeroColumns: number };
+    assert.equal(layer.levelZeroColumns, 2);
+    assert.equal(imageryCalls, 0);
+    const path = layer.tileUrlTemplate.replace('{z}', '1').replace('{x}', '3').replace('{y}', '0');
+    const response = await runtime.dispatchFetch(`http://localhost${path}`, {
+      headers: { 'Sec-Fetch-Mode': 'navigate' },
+    });
+    assert.equal(response.status, 200, response.status === 200 ? 'Imagery tile response' : await response.text());
+    assert.equal(response.headers.get('content-type'), 'image/jpeg');
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), imageryJpeg);
+    assert.equal(imageryCalls, 1);
+    assert.deepEqual(commands, []);
+  });
+
+  await t.test('keeps imagery validation and upstream failures as JSON in the Workers runtime', async () => {
+    for (const [path, status, code] of [
+      ['/api/imagery/tiles/wac-global/0/2/0', 400, 'INVALID_INPUT'],
+      ['/api/imagery/layers/unknown', 404, 'NOT_FOUND'],
+      ['/api/imagery/tiles/wac-global/1/2/0', 404, 'NOT_FOUND'],
+      ['/api/imagery/tiles/wac-global/1/1/0', 502, 'IMAGERY_ERROR'],
+      ['/api/imagery/tiles/wac-global/1/0/0', 502, 'IMAGERY_ERROR'],
+    ] as const) {
+      const response = await runtime.dispatchFetch(`http://localhost${path}`, {
+        headers: { 'Sec-Fetch-Mode': 'navigate' },
+      });
+      assert.equal(response.status, status, response.status === status ? path : `${path}: ${await response.text()}`);
+      assert.match(response.headers.get('content-type')!, /application\/json/);
+      assert.equal((await response.json() as ApiError).error.code, code);
+    }
+    assert.deepEqual(commands, []);
   });
 
   await t.test('returns a complete timeline and CSV download through the bundled Worker', async () => {

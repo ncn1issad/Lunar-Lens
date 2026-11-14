@@ -15,6 +15,7 @@ This file records the project decisions and terrain discussions through 2026-11-
 - Horizons calls are sequential within one Worker instance. There is no result cache or coordination across instances.
 - `GET /api/moon` independently returns a `moon.horizon` profile and observer height metadata as JSON or CSV. Calculations use global LDEM_64 within 60 km and LDEM_16 from 60 km to a default 480 km radius. Fine Marius Hills and 80 m polar files are reserved for rendering and are not requested for visibility calculations. Both endpoints share `apps/api/src/terrain/service.ts`. See [terrain documentation](docs/terrain.md) for preparation, sampling, errors, and verification.
 - No Durable Objects, SQLite databases, or persistent result caches are configured.
+- `GET /api/imagery/layers/wac-global` returns Moon Trek layer metadata; `GET /api/imagery/tiles/wac-global/{z}/{x}/{y}` returns original JPEG tiles with geographic matrix validation and JSON upstream errors. There is no persistent imagery cache. See [surface imagery API](docs/surface-imagery-api.md).
 
 ## Agreed architecture and scope
 

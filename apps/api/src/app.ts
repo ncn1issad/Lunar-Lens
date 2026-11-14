@@ -7,11 +7,13 @@ import { registerTimelineRoute, type GetTimeline } from './timeline.js';
 import { TerrainError } from './terrain/errors.js';
 import type { AssetFetcher } from './terrain/loader.js';
 import type { TerrainBindings } from './terrain/service.js';
+import { createImageryRoutes, type ImageryOptions } from './imagery.js';
 
 interface AppOptions {
   getPositions?: (query: HorizonQuery) => Promise<Positions>;
   getTimeline?: GetTimeline;
   fetchTerrainAsset?: AssetFetcher;
+  imagery?: ImageryOptions;
 }
 
 export function buildApp(options: AppOptions = {}) {
@@ -40,6 +42,7 @@ export function buildApp(options: AppOptions = {}) {
 
   app.get('/api/health', (c) => c.json({ status: 'ok' }));
   app.route('/api/moon', createMoonRoutes(options.fetchTerrainAsset));
+  app.route('/api/imagery', createImageryRoutes(options.imagery));
 
   registerTimelineRoute(app, options.getTimeline ?? client.timeline, options.fetchTerrainAsset);
 

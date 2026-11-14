@@ -12,6 +12,8 @@ See [Terrain profiles](docs/terrain.md) for `/api/moon`, its JSON/CSV contract, 
 
 See [Moon rendering data](docs/moon-rendering-data.md) for researched global textures, elevation maps, QuickMap mesh endpoints, and a proposed data plan for the 3D interface.
 
+See [Surface imagery API](docs/surface-imagery-api.md) for `GET /api/imagery/layers/wac-global` metadata and `GET /api/imagery/tiles/wac-global/{z}/{x}/{y}` JPEG tiles from Moon Trek. The API validates the geographic tile grid and applies a 15-second upstream timeout.
+
 ## Structure
 
 ```text
@@ -176,13 +178,15 @@ Both formats use the same combined dataset and terrain-aware visibility rules. T
 
 | HTTP status | Code | Meaning |
 | --- | --- | --- |
-| 400 | `INVALID_INPUT` | Missing or invalid query parameters |
-| 404 | `NOT_FOUND` | Unknown API route |
+| 400 | `INVALID_INPUT` | Missing or invalid parameters, including imagery coordinates |
+| 404 | `NOT_FOUND` | Unknown API route, imagery layer, or missing imagery tile |
 | 422 | `TERRAIN_OUT_OF_COVERAGE` | Terrain calculation exceeds its work or buffer budget |
 | 422 | `TERRAIN_MISSING_DATA` | A required terrain height is missing or invalid |
 | 503 | `TERRAIN_UNAVAILABLE` | Terrain assets are absent, corrupt, or unavailable |
 | 502 | `HORIZONS_ERROR` | Upstream HTTP, network, JSON, or ephemeris failure |
 | 504 | `HORIZONS_TIMEOUT` | An upstream request exceeded 45 seconds |
+| 502 | `IMAGERY_ERROR` | Imagery HTTP/network failure, wrong content type, empty image, or body download failure |
+| 504 | `IMAGERY_TIMEOUT` | An imagery request, including its body, exceeded 15 seconds |
 | 500 | `INTERNAL_ERROR` | Unexpected application failure |
 
 The Horizons client serializes Earth and Sun calls and concurrent callers within one Worker instance. This is a private prototype setup. Cloudflare may run multiple instances, even for overlapping requests from one user, so this queue does not guarantee one upstream request at a time across the deployment.
@@ -199,6 +203,6 @@ pnpm typecheck
 pnpm lint
 ```
 
-`pnpm test` builds both apps before running offline tests. The suite checks single-date and timeline queries, JSON/CSV agreement, validation, upstream failures, shared request serialization, and the bundled Worker in Cloudflare's local runtime. NASA responses are mocked using captured fixtures, so tests do not contact the live service. Runtime tests dispose of their local instances after completion.
+`pnpm test` builds both apps before running offline tests. The suite checks single-date and timeline queries, JSON/CSV agreement, validation, upstream failures, shared request serialization, imagery metadata and JPEG proxying, and the bundled Worker in Cloudflare's local runtime. NASA responses are mocked using captured fixtures, so tests do not contact the live service. Runtime tests dispose of their local instances after completion.
 
 See [Hono on Workers](https://hono.dev/docs/getting-started/cloudflare-workers), [Workers SPA routing](https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/), and [Horizons documentation](https://ssd-api.jpl.nasa.gov/doc/horizons.html).
