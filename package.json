@@ -11,7 +11,7 @@
     "dev": "pnpm --filter @lunar-lense/web build && pnpm --parallel --filter './apps/*' dev",
     "build": "pnpm --filter @lunar-lense/web build && pnpm --filter @lunar-lense/api build",
     "preview": "pnpm build && pnpm --filter @lunar-lense/api dev",
-    "test": "pnpm build && pnpm --filter @lunar-lense/api test",
+    "test": "pnpm build && pnpm --filter @lunar-lense/web test && pnpm --filter @lunar-lense/api test",
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "pnpm -r --if-present lint",
     "deploy": "pnpm build && pnpm --filter @lunar-lense/api run deploy"
