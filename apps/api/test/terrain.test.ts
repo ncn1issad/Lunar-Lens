@@ -8,6 +8,7 @@ import { apparentElevationDeg, destination } from '../src/terrain/geometry.js';
 import { loadTerrain, validateManifest, type AssetFetcher, type TerrainSurface } from '../src/terrain/loader.js';
 import { calculateSkyline, interpolateSkyline, terrainVisibility } from '../src/terrain/profile.js';
 import { createMoonRoutes, parseMoonQuery } from '../src/terrain/routes.js';
+import { globalAssets } from './fixtures/global-assets.js';
 
 const radius = 1737400;
 const query: MoonQuery = { longitude: 2, latitude: 2, eyeHeightM: 2, azimuthStepDeg: 90, maxDistanceM: 1000 };
@@ -124,9 +125,8 @@ test('loader interpolates pixel centres across tile seams and reuses the loaded 
   assert.equal(fixture.requested.length, 10);
 });
 
-test('loader rejects unsupported locations, including poles, before loading tiles', async () => {
+test('cylindrical loader rejects unsupported locations before loading tiles', async () => {
   for (const q of [
-    { ...query, latitude: 90 }, { ...query, latitude: -90 },
     { ...query, longitude: 0.001 }, { ...query, longitude: 2, maxDistanceM: 120000 },
   ]) {
     const fixture = assets();
@@ -157,23 +157,23 @@ test('loader reports missing tiles, corruption, malformed metadata and no-data e
 
 test('terrain query bounds reject duplicates, unknown keys and unbounded calculations', () => {
   assert.deepEqual(parseMoonQuery(new URLSearchParams('longitude=-57&latitude=14')), {
-    longitude: -57, latitude: 14, eyeHeightM: 2, azimuthStepDeg: 0.5, maxDistanceM: 30000,
+    longitude: -57, latitude: 14, eyeHeightM: 2, azimuthStepDeg: 0.125, maxDistanceM: 480000,
   });
   for (const suffix of [
     '&extra=1', '&longitude=2', '&latitude=2', '&eyeHeightM=2&eyeHeightM=3',
-    '&eyeHeightM=0', '&eyeHeightM=1001', '&azimuthStepDeg=0.1', '&azimuthStepDeg=7',
-    '&maxDistanceM=120001', '&maxDistanceM=99', '&eyeHeightM=NaN', '&eyeHeightM=0x10',
+    '&eyeHeightM=0', '&eyeHeightM=10.001', '&azimuthStepDeg=0.1', '&azimuthStepDeg=7',
+    '&maxDistanceM=480001', '&maxDistanceM=99', '&eyeHeightM=NaN', '&eyeHeightM=0x10',
     '&eyeHeightM=', '&azimuthStepDeg=Infinity', '&format=xml', '&format=json&format=csv',
   ]) assert.throws(() => parseMoonQuery(new URLSearchParams(`longitude=2&latitude=2${suffix}`)), Error, suffix);
   for (const params of ['', 'longitude=2', 'longitude=2&latitude=91', 'longitude=361&latitude=2']) {
     assert.throws(() => parseMoonQuery(new URLSearchParams(params)));
   }
-  assert.throws(() => calculateSkyline({ ...query, maxDistanceM: 120000, azimuthStepDeg: 0.25 }, { ...sphere, resolutionM: 1 }), /two million/);
+  assert.throws(() => calculateSkyline({ ...query, maxDistanceM: 120000, azimuthStepDeg: 0.25 }, { ...sphere, resolutionM: 1 }), /three million/);
 });
 
 test('moon CSV downloads the same calculated rows and observer metadata as JSON', async () => {
-  const fixture = assets((lat, lon) => 100 + lat * 20 + lon * 30);
-  fixture.manifest.sourceProduct = 'source, "quoted"';
+  const fixture = globalAssets();
+  fixture.manifests[64]!.source = 'source, "quoted"';
   const app = createMoonRoutes(fixture.fetcher);
   const path = '/?longitude=2&latitude=2&azimuthStepDeg=10&maxDistanceM=1000';
   const body = await (await app.request(path)).json() as MoonResponse;
@@ -190,12 +190,12 @@ test('moon CSV downloads the same calculated rows and observer metadata as JSON'
     assert.equal(Number(row.altitudeKm), body.observer.altitudeKm);
     assert.equal(Number(row.maxDistanceM), body.moon.calculation.maxDistanceM);
     assert.equal(row.referenceFrame, body.moon.terrain.referenceFrame);
-    assert.equal(row.sourceProduct, fixture.manifest.sourceProduct);
+    assert.equal(row.sourceProduct, 'LDEM_64');
   });
 });
 
 test('moon endpoint exposes one profile, ground altitude and resolution metadata', async () => {
-  const fixture = assets();
+  const fixture = globalAssets();
   const response = await createMoonRoutes(fixture.fetcher).request('/?longitude=2&latitude=2&azimuthStepDeg=90&maxDistanceM=1000&eyeHeightM=10');
   // Public requests limit azimuthStepDeg to 10; coarse rays above are for geometry tests.
   assert.equal(response.status, 400);
@@ -207,10 +207,10 @@ test('moon endpoint exposes one profile, ground altitude and resolution metadata
   assert.ok(body.moon.horizon.every(row => row.elevationDeg < 0));
   assert.equal(body.moon.terrain.referenceRadiusM, radius);
   assert.equal(body.moon.calculation.searchLimit, 'fixed-distance');
-  assert.equal(body.moon.calculation.loadedTileCount, 4);
+  assert.equal(body.moon.calculation.loadedTileCount, 2);
   assert.equal(body.moon.calculation.firstDistanceM, 1);
   const outside = await createMoonRoutes(fixture.fetcher).request('/?longitude=2&latitude=90');
-  assert.equal(outside.status, 422);
+  assert.equal(outside.status, 200); // Global calculation data covers both poles.
   const unavailable = await createMoonRoutes(async () => new Response(null, { status: 404 })).request('/?longitude=2&latitude=2');
   assert.equal(unavailable.status, 503);
 });

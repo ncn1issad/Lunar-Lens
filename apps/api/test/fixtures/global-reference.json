@@ -1,0 +1,99 @@
+{
+  "description": "Independent original NASA/MIT byte ranges, captured 2026-11-15 before reading prepared tiles. Pole height is the complete first/last latitude-ring mean.",
+  "levels": {
+    "64": {
+      "sourceUrl": "https://imbrium.mit.edu/DATA/LOLA_GDR/CYLINDRICAL/IMG/LDEM_64.IMG",
+      "poles": {
+        "north": {
+          "groundElevationM": -12.800933159722222,
+          "ringSha256": "244ee40c4c294180a29aabbf461624214e49e3a2032dbe222de3b24e61b7a050"
+        },
+        "south": {
+          "groundElevationM": 1196.0204210069444,
+          "ringSha256": "5260c2dc4284f086df1157ce9e9a1eb22de6ace354f1eaa1be7cfb0ea7b8f331"
+        }
+      },
+      "pixels": [
+        {
+          "column": 19392,
+          "row": 4864,
+          "latitudeDeg": 13.9921875,
+          "longitudeDeg": 303.0078125,
+          "dn": -3132,
+          "elevationM": -1566.0
+        },
+        {
+          "column": 11520,
+          "row": 5760,
+          "latitudeDeg": -0.0078125,
+          "longitudeDeg": 180.0078125,
+          "dn": 5460,
+          "elevationM": 2730.0
+        },
+        {
+          "column": 2880,
+          "row": 8640,
+          "latitudeDeg": -45.0078125,
+          "longitudeDeg": 45.0078125,
+          "dn": -1801,
+          "elevationM": -900.5
+        },
+        {
+          "column": 17280,
+          "row": 16,
+          "latitudeDeg": 89.7421875,
+          "longitudeDeg": 270.0078125,
+          "dn": -735,
+          "elevationM": -367.5
+        }
+      ]
+    },
+    "16": {
+      "sourceUrl": "https://imbrium.mit.edu/DATA/LOLA_GDR/CYLINDRICAL/IMG/LDEM_16.IMG",
+      "poles": {
+        "north": {
+          "groundElevationM": -16.344010416666666,
+          "ringSha256": "9c8c120cf093d3fdf23605d6ec770060d8ca7c55341894830c0e0611415888f5"
+        },
+        "south": {
+          "groundElevationM": 1004.0854166666667,
+          "ringSha256": "10e6229af0d32aed4643d4ccd724ac128ecf613b2ec411d742bba7977b6e374e"
+        }
+      },
+      "pixels": [
+        {
+          "column": 4848,
+          "row": 1216,
+          "latitudeDeg": 13.96875,
+          "longitudeDeg": 303.03125,
+          "dn": -3101,
+          "elevationM": -1550.5
+        },
+        {
+          "column": 2880,
+          "row": 1440,
+          "latitudeDeg": -0.03125,
+          "longitudeDeg": 180.03125,
+          "dn": 5541,
+          "elevationM": 2770.5
+        },
+        {
+          "column": 720,
+          "row": 2160,
+          "latitudeDeg": -45.03125,
+          "longitudeDeg": 45.03125,
+          "dn": -1782,
+          "elevationM": -891.0
+        },
+        {
+          "column": 4320,
+          "row": 4,
+          "latitudeDeg": 89.71875,
+          "longitudeDeg": 270.03125,
+          "dn": -793,
+          "elevationM": -396.5
+        }
+      ]
+    }
+  }
+}

@@ -8,12 +8,19 @@ export function moonCsv(response: MoonResponse): string {
     'longitudeDeg', 'latitudeDeg', 'groundElevationM', 'eyeHeightM', 'altitudeKm',
     'terrainId', 'sourceProduct', 'sourceVersion', 'sourceUrl', 'referenceFrame', 'referenceRadiusM',
     'pixelsPerDegree', 'azimuthStepDeg', 'maxDistanceM', 'firstDistanceM', 'distanceStepM', 'samplesPerAzimuth',
+    'projection', 'pixelSizeM',
+    'nearSourceProduct', 'nearMaxDistanceM', 'nearPixelsPerDegree', 'farSourceProduct', 'farPixelsPerDegree', 'farDistanceStepM',
   ];
   const metadata = [
     observer.longitudeDeg, observer.latitudeDeg, observer.groundElevationM, observer.eyeHeightM, observer.altitudeKm,
     terrain.id, terrain.sourceProduct, terrain.sourceVersion, terrain.sourceUrl, terrain.referenceFrame, terrain.referenceRadiusM,
-    terrain.pixelsPerDegree, calculation.azimuthStepDeg, calculation.maxDistanceM,
+    'pixelsPerDegree' in terrain ? terrain.pixelsPerDegree : '', calculation.azimuthStepDeg, calculation.maxDistanceM,
     calculation.firstDistanceM, calculation.distanceStepM, calculation.samplesPerAzimuth,
+    terrain.projection, terrain.projection === 'polar-stereographic' ? terrain.pixelSizeM : '',
+    ...('layers' in terrain ? [
+      terrain.layers[0]?.sourceProduct ?? '', terrain.layers[0]?.maxDistanceM ?? '', terrain.layers[0]?.pixelsPerDegree ?? '',
+      terrain.layers[1]?.sourceProduct ?? '', terrain.layers[1]?.pixelsPerDegree ?? '', terrain.layers[1]?.distanceStepM ?? '',
+    ] : ['', '', '', '', '', '']),
   ];
   const escape = (value: number | string) => {
     const text = String(value);

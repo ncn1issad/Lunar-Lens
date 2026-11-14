@@ -8,7 +8,7 @@ The API returns Earth's and the Sun's apparent azimuth and elevation from NASA/J
 
 See [TODO.md](TODO.md) for the agreed final API, terrain calculation and data-loading plans, implementation priorities, and open decisions. It records the relevant earlier chat discussions so future work can start here.
 
-See [Terrain profiles](docs/terrain.md) for `/api/moon`, its JSON/CSV contract, Marius Hills coverage, data preparation, and sampling limits. For example, `/api/moon?longitude=303&latitude=14` calculates a skyline from native-resolution SLDEM2015 tiles. The packaged terrain covers 12 to 16 degrees north and 301 to 305 degrees east; the full search circle must fit inside that region.
+See [Terrain profiles](docs/terrain.md) for `/api/moon`, its JSON/CSV contract, coverage, data preparation, and sampling limits. Calculations use global NASA LOLA LDEM_64 within 60 km and LDEM_16 from 60 km to a default 480 km radius. Fine Marius Hills and polar terrain remains separate for rendering and is never loaded by the calculation endpoints.
 
 See [Moon rendering data](docs/moon-rendering-data.md) for researched global textures, elevation maps, QuickMap mesh endpoints, and a proposed data plan for the 3D interface.
 
@@ -117,14 +117,23 @@ This returns 25 hourly samples per body, including midnight at both ends, and on
 | `longitude` | Yes | Lunar longitude in degrees, east positive, -180 through 360 |
 | `latitude` | Yes | Lunar latitude in degrees, north positive, -90 through 90 |
 | `stepMinutes` | No | Whole number of minutes, 1 through 527040; defaults to 60 |
-| `eyeHeightM` | No | Height above terrain, 0.1 through 1000 metres; defaults to 2 |
-| `azimuthStepDeg` | No | Skyline spacing, 0.25 through 10 degrees; must divide 360 into a whole number of directions; defaults to 0.5 |
-| `maxDistanceM` | No | Terrain search radius, 100 through 120000 metres; defaults to 30000; terrain coverage and calculation budgets also apply |
+| `eyeHeightM` | No | Height above terrain, 0.1 through 10 metres; defaults to 2 |
+| `azimuthStepDeg` | No | Skyline spacing, 0.125 through 10 degrees; must divide 360 into a whole number of directions; defaults to 0.125 (2,880 directions) |
+| `maxDistanceM` | No | Terrain search radius, 100 through 480000 metres; defaults to 480000; switches calculation data at 60000 metres |
 | `format` | No | `json` (default) or `csv` |
 
 Unknown or repeated parameters are rejected. At most 10,000 samples per body are allowed. The first sample is at `start`; subsequent samples advance by `stepMinutes`, up to and including `end` only when it falls on the sample grid. A range shorter than one step produces one sample. Invalid calendar dates, timezone offsets, fractional seconds, leap-second inputs, and pre-1962 dates are rejected by this endpoint. The original single-date endpoint still supports its historical UT1 behavior.
 
-The prepared terrain covers Marius Hills, 12 to 16 degrees north and 301 to 305 degrees east, and the full search circle must fit. The example at 14 north, 303 east works with the default radius. Unsupported locations return `422 TERRAIN_OUT_OF_COVERAGE` before any NASA request. There is no flat-horizon fallback. Terrain tiles are loaded once and one skyline is calculated per request, then reused for every timestamp.
+Global coverage includes both poles and the longitude seam. Terrain tiles are loaded and verified once per request, then reused for one skyline and every timestamp. Searches up to 60 km use only LDEM_64; larger searches add LDEM_16. The API never requests the fine rendering terrain or individual height samples from NASA. Far-field cell envelopes cover gaps between rays and can overestimate an obstruction's angular extent. Missing or corrupt calculation data fails explicitly, with no flat-horizon fallback.
+
+For example, request the north-pole timeline or the standalone south-pole skyline:
+
+```sh
+curl 'http://localhost:8787/api/timeline?start=2026-11-15&end=2026-11-16&longitude=0&latitude=90'
+curl 'http://localhost:8787/api/moon?longitude=0&latitude=-90'
+```
+
+The response keeps its top-level fields. `moon.terrain` describes the global LOD model and lists each source under `layers`, including its resolution, active distance band, encoding, source hashes, and loaded bytes. Full tile hash indices stay in the asset manifests. At either exact pole, the model uses the mean of the closest complete LDEM_64 latitude ring for one longitude-independent ground height. Supplied longitude still defines the azimuth reference and is used consistently by the skyline and Horizons.
 
 `altitudeKm` is now computed from interpolated ground elevation plus `eyeHeightM`, and the same altitude is sent to Horizons. It is no longer accepted as an independent query parameter. Both calculations use the DE421 lunar mean-Earth frame and a 1737.4 km reference sphere. JPL documents that observer frame in its [coordinate definitions](https://ssd.jpl.nasa.gov/horizons/manual.html#observer) and [lunar frame description](https://ssd.jpl.nasa.gov/horizons/manual.html#reference-frames). Timeline dates are restricted to 1962 through 2649 to stay within UTC and the high-precision lunar model's interval. The parser also checks each NASA response's observer frame and spherical radii, and rejects incompatible or fallback models.
 
@@ -169,7 +178,7 @@ Both formats use the same combined dataset and terrain-aware visibility rules. T
 | --- | --- | --- |
 | 400 | `INVALID_INPUT` | Missing or invalid query parameters |
 | 404 | `NOT_FOUND` | Unknown API route |
-| 422 | `TERRAIN_OUT_OF_COVERAGE` | Observer/search circle exceeds prepared coverage or calculation budgets |
+| 422 | `TERRAIN_OUT_OF_COVERAGE` | Terrain calculation exceeds its work or buffer budget |
 | 422 | `TERRAIN_MISSING_DATA` | A required terrain height is missing or invalid |
 | 503 | `TERRAIN_UNAVAILABLE` | Terrain assets are absent, corrupt, or unavailable |
 | 502 | `HORIZONS_ERROR` | Upstream HTTP, network, JSON, or ephemeris failure |

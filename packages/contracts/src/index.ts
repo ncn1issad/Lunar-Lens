@@ -41,4 +41,8 @@ export type {
   TimelineQuery, TimelineEphemerisQuery, TimedPosition, TimelinePositions,
   TerrainTimedPosition, TerrainTimelinePositions, TimelineResponse,
 } from './timeline.js';
-export type { MoonQuery, MoonResponse, TerrainManifest, TerrainHorizonSample } from './terrain.js';
+export type {
+  MoonQuery, MoonResponse, TerrainManifest, CylindricalTerrainManifest, PolarTerrainManifest,
+  GlobalTerrainManifest, TerrainLodMetadata,
+  TerrainHorizonSample,
+} from './terrain.js';

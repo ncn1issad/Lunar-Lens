@@ -7,8 +7,7 @@ export interface MoonQuery {
   maxDistanceM: number;
 }
 
-export interface TerrainManifest {
-  format: 'lunar-dem-f32-v1';
+interface TerrainManifestBase {
   id: string;
   source: string;
   sourceUrl: string;
@@ -16,12 +15,8 @@ export interface TerrainManifest {
   sourceVersion: string;
   referenceFrame: 'MOON_ME_DE421';
   referenceRadiusM: number;
-  projection: 'simple-cylindrical';
   registration: 'pixel-center';
   heightUnit: 'meter';
-  encoding: 'float32-le';
-  noData: 'NaN';
-  pixelsPerDegree: number;
   tileSize: number;
   northDeg: number;
   southDeg: number;
@@ -29,7 +24,69 @@ export interface TerrainManifest {
   eastDeg: number;
   /** SHA-256 of each prepared tile, keyed by "column-row.bin". */
   tiles: Record<string, string>;
-  preparation: { sourceLabelSha256: string; sourceRangesSha256: string[] };
+  preparation: {
+    sourceLabelSha256: string;
+    sourceRangesSha256: string[];
+    sourceImageSha256?: string;
+    sourceNoDataCount?: number;
+  };
+}
+
+export interface CylindricalTerrainManifest extends TerrainManifestBase {
+  format: 'lunar-dem-f32-v1';
+  projection: 'simple-cylindrical';
+  encoding: 'float32-le';
+  noData: 'NaN';
+  pixelsPerDegree: number;
+}
+
+export interface PolarTerrainManifest extends TerrainManifestBase {
+  format: 'lunar-dem-i16-v1';
+  projection: 'polar-stereographic';
+  encoding: 'int16-le';
+  noData: -32768;
+  heightScaleM: 0.5;
+  pole: 'north' | 'south';
+  centralLongitudeDeg: 0;
+  pixelSizeM: number;
+  width: number;
+  height: number;
+  /** Projected X/Y of the upper-left pixel's outer corner, in metres. */
+  originXM: number;
+  originYM: number;
+}
+
+export interface GlobalTerrainManifest extends TerrainManifestBase {
+  format: 'lunar-dem-i16-v1';
+  projection: 'simple-cylindrical';
+  encoding: 'int16-le';
+  noData: -32768;
+  heightScaleM: 0.5;
+  pixelsPerDegree: number;
+  width: number;
+  height: number;
+}
+
+export type TerrainManifest = CylindricalTerrainManifest | PolarTerrainManifest | GlobalTerrainManifest;
+
+/** Both calculation sources; full tile indices stay in the static asset manifests. */
+export interface TerrainLodMetadata {
+  format: 'lunar-dem-lod-v1';
+  id: string;
+  source: string;
+  sourceProduct: string;
+  sourceVersion: string;
+  sourceUrl: string;
+  referenceFrame: 'MOON_ME_DE421';
+  referenceRadiusM: number;
+  projection: 'simple-cylindrical';
+  layers: (Omit<GlobalTerrainManifest, 'tiles'> & {
+    minDistanceM: number;
+    maxDistanceM: number;
+    distanceStepM: number;
+    loadedTileCount: number;
+    loadedBytes: number;
+  })[];
 }
 
 export interface TerrainHorizonSample {
@@ -50,7 +107,7 @@ export interface MoonResponse {
   };
   moon: {
     horizon: TerrainHorizonSample[];
-    terrain: TerrainManifest;
+    terrain: TerrainManifest | TerrainLodMetadata;
     calculation: {
       azimuthStepDeg: number;
       maxDistanceM: number;
@@ -63,6 +120,8 @@ export interface MoonResponse {
       searchLimit: 'fixed-distance';
       loadedTileCount: number;
       loadedBytes: number;
+      farFieldCoverage?: 'cell-envelope';
+      farCellCount?: number;
     };
   };
 }

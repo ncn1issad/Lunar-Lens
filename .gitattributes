@@ -1,2 +1,4 @@
 # Preserve original NASA labels byte-for-byte for provenance hashes.
 *.lbl -text -diff
+# Prepared terrain buffers must retain their exact encoding and integrity hashes.
+*.bin -text -diff

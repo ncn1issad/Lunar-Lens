@@ -1,6 +1,7 @@
 import type { MoonQuery, MoonResponse } from '@lunar-lense/contracts';
 import { TerrainError } from './errors.js';
-import { loadTerrain, type AssetFetcher } from './loader.js';
+import type { AssetFetcher } from './loader.js';
+import { loadGlobalTerrain } from './global.js';
 import { buildMoonProfile } from './profile.js';
 
 export interface TerrainBindings {
@@ -16,5 +17,5 @@ export function terrainAssetFetcher(bindings: TerrainBindings | undefined, reque
 
 /** Shared by /api/moon and /api/timeline, without an HTTP call between routes. */
 export async function getMoonProfile(query: MoonQuery, fetchAsset: AssetFetcher): Promise<MoonResponse> {
-  return buildMoonProfile(query, await loadTerrain(query, fetchAsset));
+  return buildMoonProfile(query, await loadGlobalTerrain(query, fetchAsset));
 }

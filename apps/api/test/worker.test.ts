@@ -109,7 +109,7 @@ test('bundled Worker preserves API behavior and static asset routing', { timeout
     ]);
     assert.equal(timeline.positions.sun[0]!.isVisible, false);
     assert.equal(timeline.visibilityModel, 'terrain');
-    assert.equal(timeline.moon.horizon.length, 720);
+    assert.equal(timeline.moon.horizon.length, 2880);
     assert.equal(timeline.observer.altitudeKm,
       (timeline.observer.groundElevationM + timeline.observer.eyeHeightM) / 1000);
     for (const position of [...timeline.positions.earth, ...timeline.positions.sun]) {

@@ -28,7 +28,7 @@ const query: TimelineEphemerisQuery = {
 const requestQuery: TimelineQuery = {
   start: query.start, end: query.end, stepMinutes: query.stepMinutes,
   longitude: query.longitude, latitude: query.latitude,
-  eyeHeightM: 2, azimuthStepDeg: 0.5, maxDistanceM: 30000,
+  eyeHeightM: 2, azimuthStepDeg: 0.125, maxDistanceM: 480000,
 };
 const profile = await getMoonProfile(requestQuery, terrainAssets().fetcher);
 function buildApp(options: Parameters<typeof buildBaseApp>[0] = {}) {
@@ -142,7 +142,7 @@ test('timeline uses terrain for visibility, including obstructions, negative sky
       assert.equal(input.altitudeKm, 0.102);
       assert.equal(input.longitude, 23.5);
       assert.equal(input.latitude, -10);
-      assert.equal(terrain.requested.filter(path => path.endsWith('manifest.json')).length, 1);
+      assert.equal(terrain.requested.filter(path => path.endsWith('manifest.json')).length, 2);
       return {
         earth: timestamps.map((timestamp, index) => ({
           timestamp, azimuthDeg: [0, 359.9, 0.1][index]!, elevationDeg: 1, isVisible: true,
@@ -181,11 +181,11 @@ test('a body exactly on the interpolated terrain skyline is visible in JSON and 
 test('terrain failures return explicit JSON errors before any NASA call, without flat-horizon fallback', async () => {
   let upstreamCalls = 0;
   const getTimeline = async () => { upstreamCalls++; throw new Error('must not reach NASA'); };
-  const app = buildApp({ getTimeline });
-  for (const coordinates of ['longitude=0&latitude=0', 'longitude=0&latitude=-90']) {
+  const app = buildApp({ getTimeline, fetchTerrainAsset: async () => new Response(null, { status: 404 }) });
+  for (const coordinates of ['longitude=0&latitude=0', 'longitude=0&latitude=70']) {
     const response = await app.request(`/api/timeline?start=2026-11-14&end=2026-11-15&${coordinates}&format=csv`);
-    assert.equal(response.status, 422);
-    assert.equal((await response.json() as ApiError).error.code, 'TERRAIN_OUT_OF_COVERAGE');
+    assert.equal(response.status, 503);
+    assert.equal((await response.json() as ApiError).error.code, 'TERRAIN_UNAVAILABLE');
     assert.equal(response.headers.get('content-disposition'), null);
   }
   const noData = buildApp({ getTimeline, fetchTerrainAsset: terrainAssets(() => NaN).fetcher });
@@ -215,7 +215,7 @@ test('timeline validation normalizes dates and bounds range, steps, sample count
   })), 10_000);
   assert.equal(timelineSampleCount(parseQuery({ start: '2024-01-01', end: '2025-01-01' })), 8785);
   assert.equal(parseQuery({ start: '1962-01-01', end: '1962-01-02' }).start, '1962-01-01T00:00:00Z');
-  for (const eyeHeightM of [0.1, 1000]) {
+  for (const eyeHeightM of [0.1, 10]) {
     assert.equal(parseQuery({ eyeHeightM: String(eyeHeightM) }).eyeHeightM, eyeHeightM);
   }
   const explicit = parseQuery({ eyeHeightM: '10', stepMinutes: '30', longitude: '360', latitude: '-90' });
@@ -242,9 +242,9 @@ test('invalid timeline requests fail before any upstream call, including CSV req
     { longitude: '361' }, { longitude: '-181' }, { latitude: '91' }, { latitude: '-91' },
     { longitude: '0x10' }, { longitude: '' }, { latitude: ' ' },
     { altitudeKm: '-20.1' }, { altitudeKm: '100.1' }, { altitudeKm: 'Infinity' }, { altitudeKm: '' },
-    { altitudeKm: '0' }, { eyeHeightM: '0' }, { eyeHeightM: '1001' },
+    { altitudeKm: '0' }, { eyeHeightM: '0' }, { eyeHeightM: '10.001' },
     { azimuthStepDeg: '7' }, { azimuthStepDeg: '0.1' },
-    { maxDistanceM: '99' }, { maxDistanceM: '120001' },
+    { maxDistanceM: '99' }, { maxDistanceM: '480001' },
     { format: 'xml' }, { format: '' }, { unexpected: '1' },
   ];
   const invalidParams = invalid.map((changes) => {

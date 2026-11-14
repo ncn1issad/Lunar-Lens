@@ -1,16 +1,23 @@
-import type { MoonQuery, TerrainManifest } from '@lunar-lense/contracts';
+import type { MoonQuery, TerrainManifest, TerrainLodMetadata } from '@lunar-lense/contracts';
 import { TerrainError } from './errors.js';
 import { normalizeLongitude } from './geometry.js';
+import { loadPolarTerrain } from './polar.js';
+import { loadTiles } from './tiles.js';
 
 export interface TerrainSurface {
   referenceRadiusM: number;
   /** Smallest physical grid spacing in the search area, for radial sampling. */
   resolutionM: number;
-  sample(latitude: number, longitude: number): number;
+  sample(latitude: number, longitude: number, distanceM?: number): number;
+  samplingBands?: readonly { startM: number; endM: number; stepM: number }[];
+  visitFarCells?: (visitor: (cell: {
+    azimuthDeg: number; angularRadiusDeg: number; heightM: number;
+    minDistanceM: number; maxDistanceM: number;
+  }) => void) => void;
 }
 
 export interface LoadedTerrain extends TerrainSurface {
-  manifest: TerrainManifest;
+  manifest: TerrainManifest | TerrainLodMetadata;
   loadedTileCount: number;
   loadedBytes: number;
 }
@@ -24,11 +31,9 @@ function unavailable(message: string): never {
 export function validateManifest(value: unknown): TerrainManifest {
   if (!value || typeof value !== 'object') unavailable('Terrain manifest is invalid.');
   const m = value as TerrainManifest;
-  if (m.format !== 'lunar-dem-f32-v1' || m.referenceFrame !== 'MOON_ME_DE421'
-    || m.referenceRadiusM !== 1737400 || m.projection !== 'simple-cylindrical'
+  if (m.referenceFrame !== 'MOON_ME_DE421'
+    || m.referenceRadiusM !== 1737400
     || m.registration !== 'pixel-center' || m.heightUnit !== 'meter'
-    || m.encoding !== 'float32-le' || m.noData !== 'NaN'
-    || !Number.isInteger(m.pixelsPerDegree) || m.pixelsPerDegree < 1 || m.pixelsPerDegree > 1024
     || !Number.isInteger(m.tileSize) || m.tileSize < 1 || m.tileSize > 1024
     || ![m.northDeg, m.southDeg, m.westDeg, m.eastDeg].every(Number.isFinite)
     || m.northDeg > 90 || m.southDeg < -90 || m.northDeg <= m.southDeg
@@ -40,10 +45,35 @@ export function validateManifest(value: unknown): TerrainManifest {
     || !m.preparation.sourceRangesSha256.every(v => /^[a-f0-9]{64}$/.test(v))) {
     unavailable('Terrain manifest has unsupported geometry or encoding.');
   }
-  for (const span of [m.northDeg - m.southDeg, m.eastDeg - m.westDeg]) {
-    if (!Number.isInteger(span * m.pixelsPerDegree / m.tileSize)) {
-      unavailable('Terrain coverage must contain whole tiles.');
+  if (m.projection === 'simple-cylindrical') {
+    if (!Number.isInteger(m.pixelsPerDegree) || m.pixelsPerDegree < 1 || m.pixelsPerDegree > 1024) {
+      unavailable('Terrain manifest has unsupported cylindrical encoding.');
     }
+    if (m.encoding === 'int16-le') {
+      if (m.format !== 'lunar-dem-i16-v1' || m.noData !== -32768 || m.heightScaleM !== 0.5
+        || m.width !== 360 * m.pixelsPerDegree || m.height !== 180 * m.pixelsPerDegree
+        || m.northDeg !== 90 || m.southDeg !== -90 || m.westDeg !== 0 || m.eastDeg !== 360
+        || !/^[a-f0-9]{64}$/.test(m.preparation.sourceImageSha256 ?? '')) unavailable('Unsupported global terrain encoding.');
+    } else {
+      if (m.format !== 'lunar-dem-f32-v1' || m.encoding !== 'float32-le' || m.noData !== 'NaN') unavailable('Unsupported cylindrical encoding.');
+      for (const span of [m.northDeg - m.southDeg, m.eastDeg - m.westDeg]) {
+        if (!Number.isInteger(span * m.pixelsPerDegree / m.tileSize)) unavailable('Terrain coverage must contain whole tiles.');
+      }
+    }
+  } else if (m.projection === 'polar-stereographic') {
+    if (m.format !== 'lunar-dem-i16-v1' || m.encoding !== 'int16-le' || m.noData !== -32768
+      || m.heightScaleM !== 0.5 || !['north', 'south'].includes(m.pole) || m.centralLongitudeDeg !== 0
+      || !Number.isFinite(m.pixelSizeM) || m.pixelSizeM < 1 || m.pixelSizeM > 1000
+      || !Number.isInteger(m.width) || !Number.isInteger(m.height) || m.width < 2 || m.height < 2
+      || m.width > 20000 || m.height > 20000
+      || m.originXM !== -m.width * m.pixelSizeM / 2 || m.originYM !== m.height * m.pixelSizeM / 2
+      || m.westDeg !== 0 || m.eastDeg !== 360
+      || (m.pole === 'north' ? m.northDeg !== 90 || m.southDeg < 80 : m.southDeg !== -90 || m.northDeg > -80)
+      || !/^[a-f0-9]{64}$/.test(m.preparation.sourceImageSha256 ?? '')) {
+      unavailable('Terrain manifest has unsupported polar geometry or encoding.');
+    }
+  } else {
+    unavailable('Terrain manifest has an unsupported projection.');
   }
   if (!Object.entries(m.tiles).every(([key, hash]) => /^\d+-\d+\.bin$/.test(key) && /^[a-f0-9]{64}$/.test(hash))) {
     unavailable('Terrain tile index is invalid.');
@@ -53,16 +83,29 @@ export function validateManifest(value: unknown): TerrainManifest {
 
 /** Loads each required tile once per calculation. No cross-request result cache. */
 export async function loadTerrain(query: MoonQuery, fetchAsset: AssetFetcher): Promise<LoadedTerrain> {
+  const directory = query.latitude >= 80 ? '/terrain/north' : query.latitude <= -80 ? '/terrain/south' : '/terrain';
   let manifest: TerrainManifest;
   try {
-    const response = await fetchAsset('/terrain/manifest.json');
-    if (!response.ok) unavailable('Terrain assets are not prepared. Run python3 scripts/prepare-terrain.py and rebuild.');
+    const response = await fetchAsset(`${directory}/manifest.json`);
+    if (!response.ok) {
+      const script = directory === '/terrain' ? 'prepare-terrain.py' : 'prepare-polar-terrain.py';
+      unavailable(`Terrain assets are not prepared. Run python3 scripts/${script} and rebuild.`);
+    }
     manifest = validateManifest(await response.json());
   } catch (error) {
     if (error instanceof TerrainError) throw error;
     unavailable('Cannot load the terrain manifest.');
   }
   const m = manifest;
+  if (directory !== '/terrain') {
+    if (m.projection !== 'polar-stereographic'
+      || m.pole !== (query.latitude >= 80 ? 'north' : 'south')) {
+      unavailable('Terrain manifest does not match the selected polar region.');
+    }
+    return loadPolarTerrain(query, m, fetchAsset, directory);
+  }
+  if (m.projection !== 'simple-cylindrical') unavailable('Expected cylindrical terrain outside the polar regions.');
+  if (m.encoding !== 'float32-le') unavailable('Regional loader expects float32 terrain.');
   const longitude = normalizeLongitude(query.longitude);
   const angularDistance = query.maxDistanceM / m.referenceRadiusM;
   const latSpan = angularDistance * 180 / Math.PI;
@@ -86,37 +129,16 @@ export async function loadTerrain(query: MoonQuery, fetchAsset: AssetFetcher): P
       'TERRAIN_OUT_OF_COVERAGE', 422,
     );
   }
-  const tiles = new Map<string, DataView>();
   const wrapX = (col: number) => ((col % width) + width) % width;
   const columns = new Set<number>();
   for (let col = minX; col <= maxX; col += m.tileSize) columns.add(Math.floor(wrapX(col) / m.tileSize));
   columns.add(Math.floor(wrapX(maxX) / m.tileSize));
-  const byteLength = m.tileSize * m.tileSize * 4;
   const firstRow = Math.floor(minY / m.tileSize), lastRow = Math.floor(maxY / m.tileSize);
-  if (columns.size * (lastRow - firstRow + 1) * byteLength > 48 * 1024 * 1024) {
-    throw new TerrainError('Search area needs more than the 48 MiB terrain budget. Reduce maxDistanceM.', 'TERRAIN_OUT_OF_COVERAGE', 422);
-  }
-  // Sequential loads bound transient memory while each buffer is verified.
+  const keys: string[] = [];
   for (let row = firstRow; row <= lastRow; row++) {
-    for (const col of columns) {
-      const key = `${col}-${row}.bin`;
-      const hash = m.tiles[key];
-      if (!hash) unavailable(`Prepared terrain tile ${key} is absent from the manifest.`);
-      try {
-        const response = await fetchAsset(`/terrain/${key}`);
-        if (!response.ok) unavailable(`Cannot load terrain tile ${key}.`);
-        const buffer = await response.arrayBuffer();
-        if (buffer.byteLength !== byteLength) unavailable(`Terrain tile ${key} has an invalid size.`);
-        const actual = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buffer)))
-          .map(v => v.toString(16).padStart(2, '0')).join('');
-        if (actual !== hash) unavailable(`Terrain tile ${key} failed its integrity check.`);
-        tiles.set(key, new DataView(buffer));
-      } catch (error) {
-        if (error instanceof TerrainError) throw error;
-        unavailable(`Cannot load terrain tile ${key}.`);
-      }
-    }
+    for (const col of columns) keys.push(`${col}-${row}.bin`);
   }
+  const { tiles, loadedBytes } = await loadTiles(m, keys, fetchAsset, directory);
   function value(col: number, row: number): number {
     if (row < 0 || row >= height || (!global && (col < 0 || col >= width))) {
       throw new TerrainError('A requested terrain sample is outside prepared coverage.', 'TERRAIN_OUT_OF_COVERAGE', 422);
@@ -133,7 +155,7 @@ export async function loadTerrain(query: MoonQuery, fetchAsset: AssetFetcher): P
     manifest: m, referenceRadiusM: m.referenceRadiusM,
     resolutionM: m.referenceRadiusM * Math.PI / (180 * m.pixelsPerDegree)
       * Math.cos(Math.max(Math.abs(north), Math.abs(south)) * Math.PI / 180),
-    loadedTileCount: tiles.size, loadedBytes: tiles.size * byteLength,
+    loadedTileCount: tiles.size, loadedBytes,
     sample(latitude, lon) {
       const px = x(normalizeLongitude(lon)), py = y(latitude);
       const i = Math.floor(px), j = Math.floor(py), a = px - i, b = py - j;

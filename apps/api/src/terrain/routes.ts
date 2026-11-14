@@ -30,9 +30,9 @@ export function parseMoonQuery(params: URLSearchParams): MoonQuery {
   }
   const query = {
     longitude: number('longitude', -180, 360), latitude: number('latitude', -90, 90),
-    eyeHeightM: number('eyeHeightM', 0.1, 1000, 2),
-    azimuthStepDeg: number('azimuthStepDeg', 0.25, 10, 0.5),
-    maxDistanceM: number('maxDistanceM', 100, 120000, 30000),
+    eyeHeightM: number('eyeHeightM', 0.1, 10, 2),
+    azimuthStepDeg: number('azimuthStepDeg', 0.125, 10, 0.125),
+    maxDistanceM: number('maxDistanceM', 100, 480000, 480000),
   };
   if (!Number.isInteger(360 / query.azimuthStepDeg)) {
     throw new InvalidInputError('azimuthStepDeg must divide 360 into an integer number of directions.');

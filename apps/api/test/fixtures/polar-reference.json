@@ -1,0 +1,74 @@
+{
+  "north": {
+    "sourceProduct": "LDEM_80N_80M",
+    "centerDigitalNumbers": [
+      8,
+      9,
+      31,
+      27
+    ],
+    "poleGroundElevationM": 9.375,
+    "pixels": [
+      {
+        "column": 4800,
+        "row": 3900,
+        "latitudeDeg": 87.34764043920558,
+        "longitudeDeg": 84.26389293535507,
+        "digitalNumber": -2482,
+        "elevationM": -1241.0
+      },
+      {
+        "column": 3500,
+        "row": 4200,
+        "latitudeDeg": 88.68067773316497,
+        "longitudeDeg": 323.2103003534889,
+        "digitalNumber": -2100,
+        "elevationM": -1050.0
+      },
+      {
+        "column": 4000,
+        "row": 6000,
+        "latitudeDeg": 84.17554518940021,
+        "longitudeDeg": 5.206166959589166,
+        "digitalNumber": -2419,
+        "elevationM": -1209.5
+      }
+    ]
+  },
+  "south": {
+    "sourceProduct": "LDEM_80S_80M",
+    "centerDigitalNumbers": [
+      2598,
+      2571,
+      2596,
+      2564
+    ],
+    "poleGroundElevationM": 1291.125,
+    "pixels": [
+      {
+        "column": 4800,
+        "row": 3900,
+        "latitudeDeg": -87.34764043920558,
+        "longitudeDeg": 95.73610706464494,
+        "digitalNumber": -2038,
+        "elevationM": -1019.0
+      },
+      {
+        "column": 3500,
+        "row": 4200,
+        "latitudeDeg": -88.68067773316497,
+        "longitudeDeg": 216.78969964651108,
+        "digitalNumber": -4567,
+        "elevationM": -2283.5
+      },
+      {
+        "column": 4000,
+        "row": 6000,
+        "latitudeDeg": -84.17554518940021,
+        "longitudeDeg": 174.79383304041085,
+        "digitalNumber": -2532,
+        "elevationM": -1266.0
+      }
+    ]
+  }
+}
