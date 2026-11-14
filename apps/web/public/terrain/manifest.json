@@ -1,0 +1,48 @@
+{
+  "format": "lunar-dem-f32-v1",
+  "id": "sldem2015-v2-marius-hills-512ppd",
+  "source": "NASA/GSFC LOLA + JAXA SELENE TC SLDEM2015",
+  "sourceUrl": "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/sldem2015/tiles/float_img/sldem2015_512_00n_30n_270_315_float.img",
+  "sourceProduct": "SLDEM2015_512_00N_30N_270_315_FLOAT",
+  "sourceVersion": "V2.0",
+  "referenceFrame": "MOON_ME_DE421",
+  "referenceRadiusM": 1737400,
+  "projection": "simple-cylindrical",
+  "registration": "pixel-center",
+  "heightUnit": "meter",
+  "encoding": "float32-le",
+  "noData": "NaN",
+  "pixelsPerDegree": 512,
+  "tileSize": 512,
+  "northDeg": 16,
+  "southDeg": 12,
+  "westDeg": 301,
+  "eastDeg": 305,
+  "tiles": {
+    "0-0.bin": "9d180e55ef7d71d276403a8f4a41ac962161a314d28cfa6a66b61c1291a4725d",
+    "1-0.bin": "c517872b5660c9d4804a03ec3b1269495be353750c7f0a25d0c0214db98959d5",
+    "2-0.bin": "e78ebf7407ea3c1c292aedae26256a055e2f5de67b7084fd2de67de30f365061",
+    "3-0.bin": "553db0e71e7c468f3be9353f363c34c99aabb407a854df797430e5c76f7b32df",
+    "0-1.bin": "8c6b40f9cdee91a74eeaa45b2b039b5367bd49b9859dae18007913d1783558f2",
+    "1-1.bin": "106935c3e2567e02bb00e8b3019c34d48ccf67a24d7ce7f7e7b72f2a635359eb",
+    "2-1.bin": "3e3cd9e09070761013ae0e8d5a60794ad93b6b1410b058d83ab22caec731da8f",
+    "3-1.bin": "408fe47082e5fc172410b1999682a4ecdbf2981dec7e34652ce3d0447733039a",
+    "0-2.bin": "a2039aad9c057b4d1e81efd92838dc9ddf9092168fd1ce6654012895371f383c",
+    "1-2.bin": "a20458ac5d9185665c85466b60e62206aa076ef8ca81abef3c5f1b3096fe8705",
+    "2-2.bin": "279e974b8dbe9e02205c2938f759182260c9ef2955ee2e3f59727fd7f83338f5",
+    "3-2.bin": "f22802619a205f116a1c8e1e03b5c1bd7366d387a98a7ada0074c8a76473a2df",
+    "0-3.bin": "2aaf27840609d3dbc3e3d407d74933c1e578cb5df9c3d9a8d3c2311527799e46",
+    "1-3.bin": "741a928a8ecd116f137ac8deb4f876fad033f4e052dbf8d2d3fe3f93cf6d07a5",
+    "2-3.bin": "6e81f4fde8a2eb3a47e9e33cbb1a5792b7ef6e8ef8392fd4fcf6ee723a6dd9db",
+    "3-3.bin": "866abd433763f18477b1e7101c1a0cef638eaf4a6de603dd0bb349038d4ab718"
+  },
+  "preparation": {
+    "sourceLabelSha256": "299f88c6eb2da37455badeaf95f1123e0b342d1f8100fe8f6c17e3a39a0359d5",
+    "sourceRangesSha256": [
+      "30d1017c0dfc385b063467e9120d06f2300e8ebea27ca43e452c66c502c8306c",
+      "1373cee6fe028cceedc910621d2e84c49be7fb769831a9a5a632b3dde90388cf",
+      "f416a0ae3c40089eb99a35a6cc4354308a0323d4bbb7f1370e88161fe1a3c6b8",
+      "dd71e916fa26c3e0b2c480a0205fe5dc0b5e8a248d2900e6cadfba47a4c3fc53"
+    ]
+  }
+}

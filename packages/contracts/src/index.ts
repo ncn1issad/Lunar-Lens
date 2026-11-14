@@ -31,7 +31,10 @@ export interface HorizonResponse {
 
 export interface ApiError {
   error: {
-    code: 'INVALID_INPUT' | 'HORIZONS_ERROR' | 'HORIZONS_TIMEOUT' | 'INTERNAL_ERROR' | 'NOT_FOUND';
+    code: 'INVALID_INPUT' | 'HORIZONS_ERROR' | 'HORIZONS_TIMEOUT' | 'INTERNAL_ERROR' | 'NOT_FOUND'
+      | 'TERRAIN_UNAVAILABLE' | 'TERRAIN_OUT_OF_COVERAGE' | 'TERRAIN_MISSING_DATA';
     message: string;
   };
 }
+
+export type { MoonQuery, MoonResponse, TerrainManifest, TerrainHorizonSample } from './terrain.js';
