@@ -1,0 +1,12 @@
+{
+  "earth": {
+    "azimuthDeg": 299.177599,
+    "elevationDeg": 61.348525,
+    "isVisible": true
+  },
+  "sun": {
+    "azimuthDeg": 93.887594,
+    "elevationDeg": -12.633272,
+    "isVisible": false
+  }
+}
