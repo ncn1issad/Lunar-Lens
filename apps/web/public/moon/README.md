@@ -10,6 +10,42 @@
 Used for the globe's appearance only. The globe is a sphere and does not use
 elevation displacement or the visibility API.
 
+The Location selector upgrades to `color-8k.jpg` (8192 × 4096) and
+`normal-4k.png` (4096 × 2048). Smaller screens, devices reporting 4 GB or less
+memory, or GPUs limited to 4K use `color-4k.jpg` and `normal-2k.png` instead.
+GPUs limited below 4K retain `color.jpg`. Higher-detail files preload when
+Time becomes active, including image decoding, GPU upload and shader preparation.
+Entering Location directly also starts loading; the low-resolution globe
+remains visible until the detailed resources are ready.
+Returning to Home or Time restores the preview, and the detailed textures are
+reused during the same page session.
+
+The detailed color maps are JPEG conversions of NASA's 2019 8K LROC map:
+https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/lroc_color_poles_8k.tif
+They retain the source's sRGB values, with JPEG quality 92 and 4:4:4 chroma.
+Like the 2025 preview, this map is based on normalized LROC WAC imagery, with
+lower-resolution polar fills. It is intended for rendering, not measurements.
+
+The normal maps come from the project's prepared NASA LOLA `LDEM_16` tiles.
+The script verifies each tile hash, shifts 0–360° terrain to match the color
+map's -180–180° registration, and computes slopes in metres on the
+1,737,400 m sphere. No height exaggeration is applied. The longitude slope
+fades over the last half-degree at each pole to avoid the coordinate
+singularity. Normal maps are linear tangent-space RGB (+Y) PNGs.
+This adds relief to lighting; the model and click intersections remain
+spherical, with no terrain self-shadow calculation.
+
+Rebuild with Pillow and the existing prepared `ldem_16` dataset:
+
+```sh
+curl -fL 'https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/lroc_color_poles_8k.tif' -o /tmp/nasa-lroc-color-2019-8k.tif
+python3 scripts/prepare-globe-textures.py --color-source /tmp/nasa-lroc-color-2019-8k.tif
+```
+
+`globe-textures.json` records source hashes, processing settings, output sizes,
+and output hashes. Credit NASA's Scientific Visualization Studio, LRO/LROC,
+and NASA/GSFC LRO LOLA.
+
 `earth.jpg` is the 2048 by 1024 Earth atmosphere texture from the
 [Three.js examples](https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg),
 downloaded without modification on 2026-11-15. The surface preview uses it for

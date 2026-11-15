@@ -7,7 +7,7 @@ import {
   Group,
   Mesh,
   MeshBasicMaterial,
-  MeshLambertMaterial,
+  MeshPhongMaterial,
   OrthographicCamera,
   Quaternion,
   Raycaster,
@@ -15,6 +15,7 @@ import {
   Scene,
   SphereGeometry,
   SRGBColorSpace,
+  Texture,
   TextureLoader,
   Vector2,
   Vector3,
@@ -25,6 +26,7 @@ import { animateMoonState, getHomeMoonState } from './home-moon'
 import { frameMoonInViewport } from './moon-viewport'
 import { locationFromPoint, locationNormal } from './planning-location'
 import type { LunarLocation } from './planning-location'
+import { createGlobeQualityController, globeTextureSize } from './globe-quality'
 
 interface MoonGlobeProps {
   live?: boolean
@@ -33,22 +35,23 @@ interface MoonGlobeProps {
   previewTime?: number | null
   location?: LunarLocation | null
   selectable?: boolean
+  preloadDetail?: boolean
   onLocationChange?: (location: LunarLocation) => void
 }
 
 export default function MoonGlobe({ live = false, framingRef, zoomEnabled = true, previewTime = null,
-  location = null, selectable = false, onLocationChange }: MoonGlobeProps) {
+  location = null, selectable = false, preloadDetail = false, onLocationChange }: MoonGlobeProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
   const previewTimeRef = useRef(previewTime)
   const refreshTimeRef = useRef<(() => void) | null>(null)
-  const selectionRef = useRef({ location, selectable, onLocationChange })
+  const selectionRef = useRef({ location, selectable, preloadDetail, onLocationChange })
   const refreshSelectionRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
-    selectionRef.current = { location, selectable, onLocationChange }
+    selectionRef.current = { location, selectable, preloadDetail, onLocationChange }
     refreshSelectionRef.current?.()
-  }, [location, selectable, onLocationChange])
+  }, [location, selectable, preloadDetail, onLocationChange])
 
   useEffect(() => {
     previewTimeRef.current = previewTime
@@ -84,7 +87,7 @@ export default function MoonGlobe({ live = false, framingRef, zoomEnabled = true
     camera.position.set(0, 0, 4.3)
 
     const geometry = new SphereGeometry(1, 128, 64)
-    const material = live ? new MeshLambertMaterial() : new MeshBasicMaterial()
+    const material = live ? new MeshPhongMaterial({ specular: 0x000000, shininess: 0 }) : new MeshBasicMaterial()
     const moon = new Mesh(geometry, material)
     // The map's central meridian faces the camera, with lunar north up.
     moon.rotation.y = -Math.PI / 2
@@ -119,12 +122,14 @@ export default function MoonGlobe({ live = false, framingRef, zoomEnabled = true
 
     const render = () => renderer.render(scene, camera)
     let cameraTarget: Vector3 | null = null
+    let updateQuality = () => {}
     const updateSelection = () => {
       const selection = selectionRef.current
       renderer.domElement.setAttribute('aria-label', selection.selectable
         ? '3D Moon. Click to select a location. Drag to rotate.'
         : zoomEnabled ? '3D Moon. Drag to rotate. Scroll or pinch to zoom.' : '3D Moon. Drag to rotate.')
       marker.visible = !!selection.location && selection.selectable
+      updateQuality()
       if (selection.selectable && selection.location) {
         const normal = locationNormal(selection.location)
         dot.position.copy(normal).multiplyScalar(1.012)
@@ -237,6 +242,63 @@ export default function MoonGlobe({ live = false, framingRef, zoomEnabled = true
     texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy())
     material.map = texture
 
+    const textureSize = globeTextureSize(renderer.capabilities.maxTextureSize,
+      window.matchMedia('(max-width: 760px)').matches,
+      (navigator as Navigator & { deviceMemory?: number }).deviceMemory)
+    type Detail = { color: Texture; normal: Texture | null; material: typeof material; geometry: SphereGeometry }
+    const releaseDetail = (resource: Detail) => {
+      resource.color.dispose()
+      resource.normal?.dispose()
+      resource.material.dispose()
+      resource.geometry.dispose()
+    }
+    const quality = createGlobeQualityController<Detail>(async () => {
+      const loader = new TextureLoader()
+      const results = await Promise.allSettled([
+        loader.loadAsync(`${import.meta.env.BASE_URL}moon/color-${textureSize / 1024}k.jpg`),
+        loader.loadAsync(`${import.meta.env.BASE_URL}moon/normal-${textureSize === 8192 ? 4 : 2}k.png`),
+      ])
+      const [color, normal] = results
+      if (color.status === 'rejected') {
+        if (normal.status === 'fulfilled') normal.value.dispose()
+        throw color.reason
+      }
+      color.value.colorSpace = SRGBColorSpace
+      color.value.anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy())
+      if (normal.status === 'fulfilled') normal.value.anisotropy = color.value.anisotropy
+      const detail: Detail = {
+        color: color.value,
+        normal: normal.status === 'fulfilled' ? normal.value : null,
+        material: material.clone(),
+        geometry: new SphereGeometry(1, 256, 128),
+      }
+      detail.material.map = detail.color
+      if (detail.material instanceof MeshPhongMaterial) detail.material.normalMap = detail.normal
+      try {
+        // Decode, upload, and compile during Time instead of the first Location frame.
+        await Promise.all([detail.color, detail.normal].map(map => (map?.image as HTMLImageElement | undefined)?.decode()))
+        if (disposed) return detail
+        renderer.initTexture(detail.color)
+        if (detail.normal) renderer.initTexture(detail.normal)
+        await renderer.compileAsync(new Mesh(detail.geometry, detail.material), camera, scene)
+        return detail
+      } catch (error) {
+        releaseDetail(detail)
+        throw error
+      }
+    }, resource => {
+      moon.material = resource?.material ?? material
+      renderer.domElement.dataset.textureSize = String(resource ? textureSize : 2048)
+      renderer.domElement.dataset.terrainShading = String(!!resource?.normal)
+      moon.geometry = resource?.geometry ?? geometry
+      render()
+    }, releaseDetail)
+    updateQuality = () => {
+      quality.setEnabled(textureSize > 2048 && selectionRef.current.selectable)
+      if (textureSize > 2048 && selectionRef.current.preloadDetail) quality.preload()
+    }
+    updateQuality()
+
     let renderedWidth = 0
     let renderedHeight = 0
     let renderedFrame: { x: number; y: number; width: number; height: number; centered: boolean } | null = null
@@ -293,6 +355,7 @@ export default function MoonGlobe({ live = false, framingRef, zoomEnabled = true
       dotGeometry.dispose()
       ringGeometry.dispose()
       markerMaterial.dispose()
+      quality.dispose()
       geometry.dispose()
       material.dispose()
       texture.dispose()

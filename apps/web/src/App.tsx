@@ -72,6 +72,7 @@ function App() {
           surfaceAvailable={surface.snapshot !== null} surfaceRevision={surface.revision} backdrop={
           <div className="moon-backdrop">
             <MoonGlobe live framingRef={moonFrameRef} zoomEnabled={false} previewTime={planningActive ? previewTime : null}
+              preloadDetail={activeStep === 'plan'}
               location={site} selectable={activeStep === 'location'} onLocationChange={selectSite} />
           </div>
         }>
