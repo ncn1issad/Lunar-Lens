@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
 import { Window } from 'happy-dom'
 import type { GlobalTerrainManifest, GeographicImageryLayer, TimelineResponse } from '@lunar-lense/contracts'
-import { savedSurfaceSnapshot, startSurfaceSnapshot, SURFACE_PLAN_STORAGE_KEY } from '../src/surface-plan.ts'
+import { createSurfacePlan, savedSurfacePlan, savedSurfaceSnapshot, startSurfaceSnapshot, surfaceSnapshotAt, SURFACE_PLAN_STORAGE_KEY } from '../src/surface-plan.ts'
 import { imageryPatch, localSurfacePoint, surfaceGrid } from '../src/surface-geometry.ts'
 import { globalTerrainKeys, globalTerrainSampler } from '../src/surface-terrain.ts'
 
@@ -61,6 +61,44 @@ test('refresh restores submitted conditions and corrupt storage never becomes a 
     sessionStorage.setItem(SURFACE_PLAN_STORAGE_KEY, value)
     assert.equal(savedSurfaceSnapshot(), null)
   }
+})
+
+test('scrubbing interpolates directions across north and clamps to available samples', () => {
+  const response = timeline()
+  response.positions.earth[0]!.azimuthDeg = 350
+  response.positions.earth[1]!.azimuthDeg = 10
+  response.positions.sun[0]!.azimuthDeg = 10
+  response.positions.sun[1]!.azimuthDeg = 350
+  const plan = createSurfacePlan(response)
+  const middle = surfaceSnapshotAt(plan, Date.parse('2026-11-15T13:00:00Z'))
+  assert.equal(middle.timestamp, '2026-11-15T13:00:00Z')
+  assert.equal(middle.positions.earth.azimuthDeg, 0)
+  assert.equal(middle.positions.sun.azimuthDeg, 0)
+  assert.equal(middle.positions.earth.elevationDeg, 27.5)
+  assert.equal(middle.positions.sun.elevationDeg, -7.5)
+  assert.equal(middle.groundElevationM, plan.snapshot.groundElevationM)
+  assert.equal(surfaceSnapshotAt(plan, 0).timestamp, response.range.start)
+  assert.equal(surfaceSnapshotAt(plan, Date.parse(response.range.end)).timestamp, response.positions.earth[1]!.timestamp)
+})
+
+test('refresh retains all samples and still accepts older single-scene tabs', () => {
+  const plan = createSurfacePlan(timeline())
+  sessionStorage.setItem(SURFACE_PLAN_STORAGE_KEY, JSON.stringify(plan))
+  assert.deepEqual(savedSurfacePlan(), plan)
+  sessionStorage.setItem(SURFACE_PLAN_STORAGE_KEY, JSON.stringify(plan.snapshot))
+  assert.equal(savedSurfacePlan()?.positions.earth.length, 1)
+  plan.positions.sun.pop()
+  sessionStorage.setItem(SURFACE_PLAN_STORAGE_KEY, JSON.stringify(plan))
+  assert.equal(savedSurfacePlan(), null)
+})
+
+test('invalid later samples cannot create a timeline', () => {
+  const response = timeline()
+  response.positions.sun[1]!.timestamp = response.range.start
+  assert.throws(() => createSurfacePlan(response), /invalid surface samples/)
+  response.positions.sun[1]!.timestamp = response.positions.earth[1]!.timestamp
+  response.positions.earth[1]!.elevationDeg = NaN
+  assert.throws(() => createSurfacePlan(response), /invalid surface samples/)
 })
 
 const layer = { minZoom: 0, maxZoom: 8, levelZeroColumns: 2, levelZeroRows: 1 } as GeographicImageryLayer

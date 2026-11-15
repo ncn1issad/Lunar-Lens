@@ -9,7 +9,7 @@ import type { PlanningTimeRange } from './planning-time'
 import { initialLocationDraft, locationDraft, LOCATION_STORAGE_KEY, rememberCustomLocation, resolveLocation } from './planning-location'
 import type { LunarLocation } from './planning-location'
 import SurfacePreview from './SurfacePreview'
-import { savedSurfaceSnapshot, startSurfaceSnapshot, SURFACE_PLAN_STORAGE_KEY } from './surface-plan'
+import { savedSurfacePlan, createSurfacePlan, SURFACE_PLAN_STORAGE_KEY } from './surface-plan'
 import './planning.css'
 import './location.css'
 
@@ -30,14 +30,14 @@ const stars = Array.from({ length: 95 }, (_, index) => {
 
 function App() {
   const [recentLocations, setRecentLocations] = useState<LunarLocation[]>([])
-  const [surface, setSurface] = useState(() => ({ snapshot: savedSurfaceSnapshot(), revision: 0 }))
+  const [surface, setSurface] = useState(() => ({ plan: savedSurfacePlan(), revision: 0 }))
   const openSurface = useCallback((timeline: TimelineResponse) => {
-    const snapshot = startSurfaceSnapshot(timeline)
+    const plan = createSurfacePlan(timeline)
     setRecentLocations(recent => rememberCustomLocation(recent, {
       latitude: timeline.observer.latitudeDeg, longitude: timeline.observer.longitudeDeg,
     }))
-    try { sessionStorage.setItem(SURFACE_PLAN_STORAGE_KEY, JSON.stringify(snapshot)) } catch { /* The scene also works without storage. */ }
-    setSurface(current => ({ snapshot, revision: current.revision + 1 }))
+    try { sessionStorage.setItem(SURFACE_PLAN_STORAGE_KEY, JSON.stringify(plan)) } catch { /* The scene also works without storage. */ }
+    setSurface(current => ({ plan, revision: current.revision + 1 }))
   }, [])
   const moonFrameRef = useRef<HTMLDivElement>(null)
   const [previewTime, setPreviewTime] = useState<number | null>(null)
@@ -69,7 +69,7 @@ function App() {
 
       <main className="home-hero planning-flow-layout" data-active-step={activeStep}>
         <PlanningFlow onProgressChange={updatePlanningProgress} onStepChange={setActiveStep}
-          surfaceAvailable={surface.snapshot !== null} surfaceRevision={surface.revision} backdrop={
+          surfaceAvailable={surface.plan !== null} surfaceRevision={surface.revision} backdrop={
           <div className="moon-backdrop">
             <MoonGlobe live preloadDetail framingRef={moonFrameRef} zoomEnabled={false} previewTime={planningActive ? previewTime : null}
               location={site} selectable={activeStep === 'planner'} onLocationChange={selectSite} />
@@ -99,8 +99,8 @@ function App() {
               <PlanningLocation value={siteDraft} onChange={setSiteDraft} recentLocations={recentLocations} />
             </div>
           </section>
-          {surface.snapshot && <section id="surface" className="flow-step flow-step-surface" aria-label="Moon surface" tabIndex={-1}>
-            <SurfacePreview key={surface.revision} snapshot={surface.snapshot} />
+          {surface.plan && <section id="surface" className="flow-step flow-step-surface" aria-label="Moon surface" tabIndex={-1}>
+            <SurfacePreview key={surface.revision} plan={surface.plan} active={activeStep === 'surface'} />
           </section>}
           <PlanningSubmit timeRange={timeRange} siteDraft={siteDraft} visible={activeStep === 'planner'}
             onSuccess={openSurface} />

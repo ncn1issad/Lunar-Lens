@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AmbientLight, BufferAttribute, BufferGeometry, CanvasTexture, DirectionalLight,
   Mesh, MeshBasicMaterial, MeshStandardMaterial, PCFSoftShadowMap, PerspectiveCamera,
@@ -9,8 +9,11 @@ import {
   concurrent, imageryPatch, skyDirection,
 } from './surface-geometry'
 import type { SurfaceSnapshot } from './surface-geometry'
-import { locationLabel, locationPresets, normalizeLongitude } from './planning-location'
+import { locationLabel, normalizeLongitude } from './planning-location'
 import { plannedTerrain } from './surface-terrain'
+import type { SurfacePlan } from './surface-plan'
+import { surfaceSnapshotAt } from './surface-plan'
+import SurfaceTimeline from './SurfaceTimeline'
 import './surface-preview.css'
 
 async function json<T>(url: string, signal: AbortSignal): Promise<T> {
@@ -19,13 +22,17 @@ async function json<T>(url: string, signal: AbortSignal): Promise<T> {
   return response.json() as Promise<T>
 }
 
-function SurfaceScene({ snapshot }: { snapshot: SurfaceSnapshot }) {
+function SurfaceScene({ snapshot, selected }: { snapshot: SurfaceSnapshot; selected: SurfaceSnapshot }) {
   const hostRef = useRef<HTMLDivElement>(null)
-  const bearingRef = useRef<HTMLSpanElement>(null)
-  const earthLabelRef = useRef<HTMLSpanElement>(null)
-  const resetRef = useRef(() => {})
+  const selectedRef = useRef(selected)
+  const updateTimeRef = useRef<(value: SurfaceSnapshot) => void>(() => {})
   const [status, setStatus] = useState<string | null>('Loading lunar terrain...')
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    selectedRef.current = selected
+    updateTimeRef.current(selected)
+  }, [selected])
 
   useEffect(() => {
     const host = hostRef.current
@@ -124,7 +131,6 @@ function SurfaceScene({ snapshot }: { snapshot: SurfaceSnapshot }) {
 
       let yaw = snapshot.positions.earth.azimuthDeg - 12
       let pitch = 0
-      const labelPosition = new Vector3()
       const render = () => {
         if (disposed) return
         camera.lookAt(camera.position.clone().add(new Vector3(...skyDirection(yaw, pitch))))
@@ -133,30 +139,32 @@ function SurfaceScene({ snapshot }: { snapshot: SurfaceSnapshot }) {
         renderer.render(sky, skyCamera)
         renderer.clearDepth()
         renderer.render(scene, camera)
-        if (bearingRef.current) {
-          const bearing = (yaw % 360 + 360) % 360
-          const compass = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(bearing / 45) % 8]
-          bearingRef.current.textContent = `${Math.round(bearing).toString().padStart(3, '0')}° ${compass}`
-        }
-        const label = earthLabelRef.current
-        if (label) {
-          labelPosition.copy(earth.position).project(skyCamera)
-          label.hidden = labelPosition.z > 1 || Math.abs(labelPosition.x) > 0.95 || Math.abs(labelPosition.y) > 0.9
-          label.style.left = `${(labelPosition.x + 1) * 50}%`
-          label.style.top = `${(1 - labelPosition.y) * 50}%`
-        }
       }
-      resetRef.current = () => {
-        yaw = snapshot.positions.earth.azimuthDeg
-        pitch = Math.max(-65, Math.min(80, snapshot.positions.earth.elevationDeg))
+      const resetView = () => {
+        yaw = selectedRef.current.positions.earth.azimuthDeg
+        pitch = Math.max(-65, Math.min(80, selectedRef.current.positions.earth.elevationDeg))
         render()
       }
+      updateTimeRef.current = current => {
+        sunDirection.set(...skyDirection(current.positions.sun.azimuthDeg, current.positions.sun.elevationDeg))
+        earthDirection.set(...skyDirection(current.positions.earth.azimuthDeg, current.positions.earth.elevationDeg))
+        sun.position.copy(sunDirection).multiplyScalar(1000)
+        earth.position.copy(earthDirection).multiplyScalar(1000)
+        earth.scale.setScalar(snapshot.positions.earth.distanceKm / current.positions.earth.distanceKm)
+        sun.scale.setScalar(snapshot.positions.sun.distanceKm / current.positions.sun.distanceKm)
+        light.position.copy(sunDirection).multiplyScalar(60000)
+        light.shadow.needsUpdate = true
+        earthLight.position.copy(earth.position).addScaledVector(sunDirection, 10000)
+        canvas.setAttribute('aria-label', `View from the Moon at ${locationLabel({ latitude: snapshot.latitudeDeg, longitude: normalizeLongitude(snapshot.longitudeDeg) })}, ${current.timestamp}. Drag or use arrow keys to look around.`)
+        render()
+      }
+      updateTimeRef.current(selectedRef.current)
       const resize = () => {
         if (disposed || !host.clientWidth || !host.clientHeight) return
         camera.aspect = skyCamera.aspect = host.clientWidth / host.clientHeight
         camera.updateProjectionMatrix()
         skyCamera.updateProjectionMatrix()
-        renderer.setSize(host.clientWidth, host.clientHeight)
+        renderer.setSize(host.clientWidth, host.clientHeight, false)
         render()
       }
       const observer = new ResizeObserver(resize)
@@ -182,7 +190,7 @@ function SurfaceScene({ snapshot }: { snapshot: SurfaceSnapshot }) {
       const key = (event: KeyboardEvent) => {
         if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home'].includes(event.key)) return
         event.preventDefault()
-        if (event.key === 'Home') { resetRef.current(); return }
+        if (event.key === 'Home') { resetView(); return }
         yaw += event.key === 'ArrowRight' ? 3 : event.key === 'ArrowLeft' ? -3 : 0
         pitch = Math.max(-65, Math.min(80, pitch + (event.key === 'ArrowUp' ? 3 : event.key === 'ArrowDown' ? -3 : 0)))
         render()
@@ -239,46 +247,41 @@ function SurfaceScene({ snapshot }: { snapshot: SurfaceSnapshot }) {
     return () => {
       disposed = true
       abort.abort()
-      resetRef.current = () => {}
+      updateTimeRef.current = () => {}
       for (const dispose of cleanup) dispose()
       for (const resource of resources.reverse()) resource.dispose()
     }
   }, [snapshot])
 
-  const site = { latitude: snapshot.latitudeDeg, longitude: normalizeLongitude(snapshot.longitudeDeg) }
-  const siteName = locationPresets.find(preset => Math.abs(preset.latitude - site.latitude) < 0.00001
-    && Math.abs(preset.longitude - site.longitude) < 0.00001)?.name ?? 'Lunar surface'
-
   return (
     <>
       <div className="surface-canvas" ref={hostRef} />
-      <div className="surface-hud" aria-hidden="true">
-        <span className="surface-site">{siteName} <span>{locationLabel(site)}</span></span>
-        <span className="surface-bearing" ref={bearingRef}>Looking toward Earth</span>
-      </div>
-      <span ref={earthLabelRef} className="surface-earth-label" hidden>Earth</span>
-      {status && <div className="surface-loading" role="status"><span />{status}</div>}
+      {status && <div className="surface-loading" role="status" aria-label={status}><span /></div>}
       {error && <p className="surface-error" role="alert">{error}</p>}
-      <div className="surface-controls">
-        <span>Drag to look around <span className="surface-keyboard-hint">or use arrow keys</span></span>
-        <button type="button" onClick={() => resetRef.current()}>Look toward Earth</button>
-      </div>
     </>
   )
 }
 
-export default function SurfacePreview({ snapshot }: { snapshot: SurfaceSnapshot }) {
-  const [version, setVersion] = useState(0)
+export default function SurfacePreview({ plan, active }: { plan: SurfacePlan; active: boolean }) {
+  const [nearTop, setNearTop] = useState(false)
+  const [time, setTime] = useState(() => Date.parse(plan.snapshot.timestamp))
+  const selected = useMemo(() => surfaceSnapshotAt(plan, time), [plan, time])
 
   return (
-    <div className="surface-view surface-window">
-      <SurfaceScene key={version} snapshot={snapshot} />
-      <div className="surface-page-navigation">
-        <button type="button" onClick={() => setVersion(value => value + 1)}>Reload view</button>
-      </div>
-      <p className="surface-page-details">
-        {snapshot.timestamp.replace('T', ' ').replace('Z', ' UTC')} · {snapshot.eyeHeightM} m above the ground
-      </p>
+    <div className="surface-view surface-window"
+      onPointerMove={event => {
+        if (event.buttons !== 0) return
+        setNearTop(event.clientY - event.currentTarget.getBoundingClientRect().top <= 96)
+      }}
+      onPointerLeave={() => setNearTop(false)}>
+      <a className={`surface-back-to-planner${nearTop ? ' is-visible' : ''}`} href="#planner" aria-label="Back to planner">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 19V5m-6 6 6-6 6 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span>Planner</span>
+      </a>
+      <SurfaceScene snapshot={plan.snapshot} selected={selected} />
+      <SurfaceTimeline key={active ? 'active' : 'inactive'} positions={plan.positions} selected={time} onSelect={setTime} />
     </div>
   )
 }

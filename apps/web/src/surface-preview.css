@@ -6,52 +6,52 @@
   pointer-events: auto;
 }
 
-.surface-preview { width: 100%; max-width: 1440px; margin-inline: auto; pointer-events: auto; }
-.surface-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 22px; }
-.surface-eyebrow { margin: 0 0 10px; color: var(--lavender); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
-.surface-heading h2 { margin: 0; font-size: clamp(26px, 3vw, 40px); font-weight: 500; letter-spacing: -0.045em; }
-.surface-heading > p { display: flex; gap: 18px; flex-wrap: wrap; justify-content: flex-end; margin: 0 0 3px; color: var(--subtext); font-size: 12px; font-variant-numeric: tabular-nums; }
-.surface-heading > p span:last-child { color: var(--muted); }
 .surface-window { position: relative; height: clamp(360px, 62dvh, 760px); overflow: hidden; border: 1px solid #313244; border-radius: 12px; background: #000; isolation: isolate; }
 .surface-canvas { position: absolute; inset: 0; }
 .surface-canvas canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; cursor: grab; }
 .surface-canvas canvas:active { cursor: grabbing; }
 .surface-canvas canvas:focus-visible { outline: 2px solid var(--lavender); outline-offset: -4px; }
-.surface-hud { position: absolute; inset: 0 0 auto; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 24px; background: linear-gradient(#0009, transparent); pointer-events: none; font-size: 12px; }
-.surface-site { color: #e4e5eb; }
-.surface-site > span { display: block; margin-top: 6px; color: #9398a7; font-size: 11px; font-variant-numeric: tabular-nums; }
-.surface-bearing { font-size: 11px; color: #b8bac6; font-variant-numeric: tabular-nums; }
-.surface-earth-label { position: absolute; margin-top: 22px; transform: translateX(-50%); color: #a6adc8; font-size: 10px; letter-spacing: 0.04em; pointer-events: none; text-shadow: 0 1px 6px #000; }
-.surface-earth-label[hidden] { display: none; }
-.surface-controls { position: absolute; inset: auto 0 0; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 32px 24px 20px; background: linear-gradient(transparent, #000b); pointer-events: none; }
-.surface-controls > span { color: #b8bac6; font-size: 11px; text-shadow: 0 1px 6px #000; }
-.surface-controls button { padding: 9px 13px; border: 1px solid #cdd6f433; border-radius: 5px; background: #11111ba6; color: #cdd6f4; font: inherit; font-size: 11px; cursor: pointer; pointer-events: auto; }
-.surface-controls button:hover { border-color: var(--lavender); color: #fff; }
 .surface-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 12px; margin: 0; color: var(--subtext); font-size: 12px; pointer-events: none; text-shadow: 0 1px 8px #000; }
 .surface-loading > span { width: 7px; height: 7px; border-radius: 50%; background: var(--lavender); }
 .surface-error { position: absolute; top: 80px; left: 24px; right: 24px; width: fit-content; margin: 0; padding: 12px 16px; border: 1px solid #f38ba855; border-radius: 6px; background: #181825ed; color: #f38ba8; font-size: 12px; }
-.surface-caption { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-top: 14px; color: var(--muted); font-size: 11px; }
-.surface-caption p { margin: 0; line-height: 1.5; }
-.surface-caption button { flex: none; padding: 5px 0 5px 10px; border: 0; background: transparent; color: var(--subtext); font: inherit; font-size: 11px; cursor: pointer; }
-.surface-caption button:hover { color: var(--lavender); }
 
 .surface-view.surface-window { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; border: 0; border-radius: 0; }
-.surface-page-navigation { position: absolute; top: 0; right: 0; padding: max(18px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) 18px 24px; }
-.surface-page-navigation button { padding: 10px 13px; border: 1px solid #cdd6f433; border-radius: 5px; background: #11111ba6; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
-.surface-page-navigation button:hover { border-color: var(--lavender); color: #fff; }
-.surface-view .surface-hud { top: calc(64px + env(safe-area-inset-top)); background: none; }
-.surface-view .surface-error { top: calc(150px + env(safe-area-inset-top)); }
-.surface-page-details { position: absolute; left: 24px; right: 24px; bottom: calc(70px + env(safe-area-inset-bottom)); margin: 0; color: var(--subtext); font-size: 11px; line-height: 1.6; text-shadow: 0 1px 6px #000; pointer-events: none; }
-.surface-view .surface-controls { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+.surface-back-to-planner { position: absolute; z-index: 1; top: max(18px, env(safe-area-inset-top)); left: 50%; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid #cdd6f433; border-radius: 999px; background: #11111bd9; color: var(--text); font-size: 12px; text-decoration: none; opacity: 0; transform: translate(-50%, -8px); pointer-events: none; transition: opacity 180ms ease, transform 180ms ease; }
+.surface-back-to-planner svg { width: 20px; height: 20px; }
+.surface-back-to-planner.is-visible, .surface-back-to-planner:focus-visible { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.surface-back-to-planner:hover { border-color: var(--lavender); color: var(--lavender); }
+.surface-back-to-planner:focus-visible { outline: 2px solid var(--lavender); outline-offset: 4px; }
+.surface-view .surface-error { top: calc(80px + env(safe-area-inset-top)); }
+.surface-timeline-overlay { position: absolute; z-index: 1; inset: auto 0 0; height: calc(112px + env(safe-area-inset-bottom)); }
+.surface-timeline { position: absolute; inset: auto 0 0; padding: 20px 24px max(18px, env(safe-area-inset-bottom)); background: linear-gradient(transparent, #0008); color: #cdd6f4; opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity 180ms ease, transform 180ms ease; }
+.surface-timeline-overlay[data-intro-visible="true"] .surface-timeline,
+.surface-timeline-overlay[data-scrubbing="true"] .surface-timeline,
+.surface-timeline-overlay:has(:focus-visible) .surface-timeline { opacity: 1; transform: translateY(0); pointer-events: auto; }
+@media (hover: hover) {
+  .surface-timeline-overlay:hover .surface-timeline { opacity: 1; transform: translateY(0); pointer-events: auto; }
+}
+.surface-timeline-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 12px; }
+.surface-timeline-heading label { color: #bac2de; }
+.surface-timeline output { font-variant-numeric: tabular-nums; }
+.surface-timeline-track { position: relative; margin-top: 8px; }
+.surface-timeline input { display: block; appearance: none; width: 100%; height: 28px; margin: 0; background: transparent; cursor: pointer; touch-action: none; }
+.surface-timeline input::-webkit-slider-runnable-track { height: 12px; border-radius: 2px; background: var(--surface-colors); }
+.surface-timeline input::-moz-range-track { height: 12px; border-radius: 2px; background: var(--surface-colors); }
+.surface-timeline input::-moz-range-progress { background: transparent; }
+.surface-timeline input::-webkit-slider-thumb { appearance: none; width: 2px; height: 28px; margin-top: -8px; border: 0; border-radius: 0; background: #fff; box-shadow: none; }
+.surface-timeline input::-moz-range-thumb { width: 2px; height: 28px; border: 0; border-radius: 0; background: #fff; box-shadow: none; }
+.surface-timeline input:focus-visible { outline: 2px solid #b4befe; outline-offset: 3px; border-radius: 4px; }
+.surface-timeline input:disabled { opacity: 0.45; cursor: default; }
+
+@media (hover: none) {
+  .surface-back-to-planner { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .surface-back-to-planner, .surface-timeline { transition: none; }
+}
 
 @media (max-width: 760px) {
-  .surface-heading { align-items: flex-start; flex-direction: column; gap: 14px; margin-bottom: 18px; }
-  .surface-heading > p { justify-content: flex-start; gap: 8px 16px; font-size: 11px; }
-  .surface-window { height: max(380px, 55dvh); }
-  .surface-hud { padding: 18px; }
-  .surface-controls { padding: 28px 16px 18px; }
-  .surface-keyboard-hint { display: none; }
-  .surface-caption { align-items: flex-start; }
-  .surface-page-navigation { padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right)); }
-  .surface-page-details { left: 16px; right: 16px; }
+  .surface-timeline { padding-inline: 16px; }
+  .surface-timeline-heading { font-size: 11px; }
 }
