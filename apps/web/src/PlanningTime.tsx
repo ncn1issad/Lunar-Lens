@@ -99,7 +99,7 @@ export default function PlanningTime({ embedded = false, onPreviewTimeChange, on
     <section className={`planning-page${embedded ? ' planning-embedded' : ''}`}>
       {!embedded && <nav className="planning-nav" aria-label="Planning navigation">
         <a href="#" className="back-home"><span aria-hidden="true">←</span> Home</a>
-        <span className="planning-wordmark">Lunar Lense</span>
+        <span className="planning-wordmark">Lunar Lens</span>
       </nav>}
       <div className="planning-content">
         <header className="planning-heading">

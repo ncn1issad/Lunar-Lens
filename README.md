@@ -1,4 +1,4 @@
-# Lunar Lense
+# Lunar Lens
 
 A pnpm workspace with a Hono API on Cloudflare Workers and a Vite, React, and TypeScript frontend served through Workers Static Assets. The home page has introductory text on the left and a textured 3D Moon on the right, with a Catppuccin Mocha space background and subtle stars. Drag the Moon to rotate it. Scroll anywhere to move through the input sections. The globe uses Three.js and a locally packaged NASA LROC texture, with a soft fill light to keep the night side visible. "Start planning" opens Planner, which combines the time selector and location controls in one section. Home and Planner links in a fixed top pill jump between centred scroll sections. The Moon enlarges behind the Planner controls; `/#planner` opens Planner directly. Older `/#plan` and `/#location` links also open Planner. Terrain displacement and timeline display controls are not implemented yet.
 

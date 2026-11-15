@@ -228,8 +228,8 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
   }, [goTo, surfaceAvailable, surfaceRevision])
 
   useEffect(() => {
-    document.title = active === 'surface' ? 'Moon surface | Lunar Lense'
-      : active === 'planner' ? 'Planner | Lunar Lense' : 'Lunar Lense'
+    document.title = active === 'surface' ? 'Moon surface | Lunar Lens'
+      : active === 'planner' ? 'Planner | Lunar Lens' : 'Lunar Lens'
     callbacksRef.current.onStepChange?.(active)
   }, [active])
 

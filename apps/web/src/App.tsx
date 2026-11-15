@@ -82,7 +82,7 @@ function App() {
                   <circle cx="16" cy="16" r="8" fill="currentColor" />
                   <ellipse cx="16" cy="16" rx="16" ry="6" transform="rotate(-35 16 16)" stroke="currentColor" strokeWidth="1" />
                 </svg>
-                <span className="brand-name"><span>Lunar</span><span>Lense</span></span>
+                <span className="brand-name"><span>Lunar</span><span>Lens</span></span>
               </h1>
               <p>Plan around communication windows and solar power availability at your lunar site.</p>
               <a className="start-planning" href="#planner">

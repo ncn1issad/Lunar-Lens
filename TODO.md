@@ -1,4 +1,4 @@
-# Lunar Lense plans
+# Lunar Lens plans
 
 This file records the project decisions and terrain discussions through 2026-11-15. Use it with [README.md](README.md) instead of searching earlier chats. The README documents the running application; this file describes planned work. Unchecked items are not implemented.
 

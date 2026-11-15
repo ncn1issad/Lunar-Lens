@@ -114,7 +114,7 @@ test('Start planning and section navigation retain the mounted input and move fo
   input.value = '10:45'
   await clickLink('.flow-navigation a[href="#planner"]')
   assert.equal(viewport.scrollTop, targets[1])
-  assert.equal(window.document.title, 'Planner | Lunar Lense')
+  assert.equal(window.document.title, 'Planner | Lunar Lens')
   await clickLink('.flow-navigation a[href="#home"]')
   assert.equal(find('input'), input)
   assert.equal(input.value, '10:45')
