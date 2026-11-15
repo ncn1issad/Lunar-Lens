@@ -179,6 +179,7 @@
 }
 .flow-column { position: relative; min-width: 0; min-height: 0; height: 100%; pointer-events: auto; }
 .flow-navigation { position: fixed; z-index: 3; top: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 5px; border: 1px solid #45475a80; border-radius: 999px; background: #181825e6; box-shadow: 0 8px 30px #00000030; backdrop-filter: blur(16px); }
+.flow-navigation[hidden] { display: none; }
 .flow-navigation a { padding: 10px 22px; border-radius: 999px; color: var(--subtext); font-size: 12px; text-decoration: none; }
 .flow-navigation a:hover { color: var(--text); }
 .flow-navigation a[aria-current='step'] { background: #313244; color: var(--lavender); }
@@ -190,6 +191,49 @@
 .planning-flow-layout .flow-step > :is(.hero-copy, .planning-page) { width: var(--flow-column-width, min(560px, calc(100vw - 36px))); flex: none; pointer-events: auto; }
 .planning-flow-layout #plan > .planning-page { width: max(var(--flow-column-width, 0px), min(760px, calc(64vw - var(--flow-column-left, 18px)))); }
 .with-planning-flow > .site-footer { position: fixed; right: 0; bottom: 0; width: auto; margin: 0; padding-block: 18px; }
+.with-planning-flow[data-active-step='surface'] > .site-footer { display: none; }
+
+.planning-submit {
+  position: fixed;
+  z-index: 4;
+  right: calc(var(--flow-scrollbar-width, 0px) + clamp(22px, 5.5vw, 88px) * (1 - var(--location-progress, 0)) + 18px * var(--location-progress, 0));
+  bottom: max(52px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  max-width: min(340px, calc(100vw - 44px));
+  pointer-events: auto;
+}
+.planning-submit[hidden] { display: none; }
+.planning-submit-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  min-height: 50px;
+  padding: 13px 22px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--lavender);
+  color: var(--crust);
+  box-shadow: 0 8px 30px #00000030;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.planning-submit-button:hover:not(:disabled) { background: var(--mauve); }
+.planning-submit-button:disabled { opacity: 0.6; cursor: default; }
+.planning-submit-button svg { width: 20px; height: 20px; }
+.planning-submit-feedback {
+  margin: 0;
+  color: #f38ba8;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: right;
+}
+.flow-step:not(#home) { padding-bottom: 120px; }
 
 .planning-embedded.planning-page { width: 100%; min-height: 0; padding: 0; }
 .planning-embedded .planning-content { max-width: none; margin: 0; container-type: inline-size; container-name: time-editor; }

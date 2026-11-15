@@ -4,11 +4,13 @@ import {
   Mesh, MeshBasicMaterial, MeshStandardMaterial, PCFSoftShadowMap, PerspectiveCamera,
   Scene, SphereGeometry, SRGBColorSpace, TextureLoader, Vector3, WebGLRenderer,
 } from 'three'
-import type { CylindricalTerrainManifest, GeographicImageryLayer } from '@lunar-lense/contracts'
+import type { GeographicImageryLayer } from '@lunar-lense/contracts'
 import {
-  concurrent, imageryPatch, previewSite, previewTimestamp, sampleTerrain, skyDirection, surfaceGrid,
+  concurrent, imageryPatch, skyDirection,
 } from './surface-geometry'
-import type { ImageryPatch, SurfaceSnapshot } from './surface-geometry'
+import type { SurfaceSnapshot } from './surface-geometry'
+import { locationLabel, locationPresets, normalizeLongitude } from './planning-location'
+import { plannedTerrain } from './surface-terrain'
 import './surface-preview.css'
 
 async function json<T>(url: string, signal: AbortSignal): Promise<T> {
@@ -17,41 +19,7 @@ async function json<T>(url: string, signal: AbortSignal): Promise<T> {
   return response.json() as Promise<T>
 }
 
-async function terrain(patch: ImageryPatch, signal: AbortSignal) {
-  const base = `${import.meta.env.BASE_URL}terrain/`
-  const manifest = await json<CylindricalTerrainManifest>(`${base}manifest.json`, signal)
-  if (manifest.projection !== 'simple-cylindrical' || manifest.encoding !== 'float32-le') {
-    throw new Error('The Marius Hills terrain is unavailable.')
-  }
-  const column = (lon: number) => (lon - manifest.westDeg) * manifest.pixelsPerDegree - 0.5
-  const row = (lat: number) => (manifest.northDeg - lat) * manifest.pixelsPerDegree - 0.5
-  const keys: string[] = []
-  for (let y = Math.floor(Math.floor(row(patch.northDeg)) / manifest.tileSize);
-    y <= Math.floor((Math.floor(row(patch.southDeg)) + 1) / manifest.tileSize); y++) {
-    for (let x = Math.floor(Math.floor(column(patch.westDeg)) / manifest.tileSize);
-      x <= Math.floor((Math.floor(column(patch.eastDeg)) + 1) / manifest.tileSize); x++) {
-      keys.push(`${x}-${y}.bin`)
-    }
-  }
-  const tiles = new Map<string, DataView>()
-  await concurrent(keys, async key => {
-    signal.throwIfAborted()
-    if (!manifest.tiles[key]) throw new Error('The surface preview extends beyond prepared terrain.')
-    const response = await fetch(`${base}${key}`, { signal })
-    if (!response.ok) throw new Error('A lunar terrain tile could not load.')
-    const buffer = await response.arrayBuffer()
-    const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buffer)))
-      .map(value => value.toString(16).padStart(2, '0')).join('')
-    if (buffer.byteLength !== manifest.tileSize ** 2 * 4 || hash !== manifest.tiles[key]) {
-      throw new Error('A lunar terrain tile failed its integrity check.')
-    }
-    tiles.set(key, new DataView(buffer))
-  })
-  signal.throwIfAborted()
-  return surfaceGrid(patch, manifest.referenceRadiusM, (lat, lon) => sampleTerrain(manifest, tiles, lat, lon))
-}
-
-function SurfaceScene() {
+function SurfaceScene({ snapshot }: { snapshot: SurfaceSnapshot }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const bearingRef = useRef<HTMLSpanElement>(null)
   const earthLabelRef = useRef<HTMLSpanElement>(null)
@@ -69,18 +37,11 @@ function SurfaceScene() {
     const keep = <T extends { dispose(): void }>(resource: T): T => { resources.push(resource); return resource }
 
     const start = async () => {
-      const [snapshot, layer] = await Promise.all([
-        json<SurfaceSnapshot>(`${import.meta.env.BASE_URL}moon/surface-preview.json`, abort.signal),
-        json<GeographicImageryLayer>('/api/imagery/layers/wac-global', abort.signal),
-      ])
-      if (snapshot.timestamp !== previewTimestamp || snapshot.latitudeDeg !== previewSite.latitudeDeg
-        || snapshot.longitudeDeg !== previewSite.longitudeDeg || snapshot.eyeHeightM !== previewSite.eyeHeightM) {
-        throw new Error('The fixed surface snapshot does not match this site.')
-      }
-      const patch = imageryPatch(layer)
-      const grid = await terrain(patch, abort.signal)
+      const layer = await json<GeographicImageryLayer>('/api/imagery/layers/wac-global', abort.signal)
+      const patch = imageryPatch(layer, snapshot)
+      const grid = await plannedTerrain(patch, snapshot, import.meta.env.BASE_URL, abort.signal)
       if (Math.abs(grid.groundM - snapshot.groundElevationM) > 0.01) {
-        throw new Error('The surface terrain does not match the captured observer height.')
+        throw new Error('The surface terrain does not match the observer height.')
       }
       if (disposed) return
 
@@ -94,14 +55,14 @@ function SurfaceScene() {
       const canvas = renderer.domElement
       canvas.tabIndex = 0
       canvas.setAttribute('role', 'img')
-      canvas.setAttribute('aria-label', 'View from the Moon at Marius Hills. Drag or use arrow keys to look around. Position and time are fixed.')
+      canvas.setAttribute('aria-label', `View from the Moon at ${locationLabel({ latitude: snapshot.latitudeDeg, longitude: normalizeLongitude(snapshot.longitudeDeg) })}, ${snapshot.timestamp}. Drag or use arrow keys to look around.`)
       host.appendChild(canvas)
       cleanup.push(() => canvas.remove())
 
       const scene = new Scene()
       const sky = new Scene()
       const camera = new PerspectiveCamera(58, 1, 0.2, 180000)
-      camera.position.set(0, previewSite.eyeHeightM, 0)
+      camera.position.set(0, snapshot.eyeHeightM, 0)
       const skyCamera = new PerspectiveCamera(58, 1, 0.1, 5000)
       const geometry = keep(new BufferGeometry())
       geometry.setAttribute('position', new BufferAttribute(grid.positions, 3))
@@ -162,7 +123,7 @@ function SurfaceScene() {
       sky.add(sun)
 
       let yaw = snapshot.positions.earth.azimuthDeg - 12
-      let pitch = Math.min(22, snapshot.positions.earth.elevationDeg / 2)
+      let pitch = 0
       const labelPosition = new Vector3()
       const render = () => {
         if (disposed) return
@@ -186,8 +147,8 @@ function SurfaceScene() {
         }
       }
       resetRef.current = () => {
-        yaw = snapshot.positions.earth.azimuthDeg - 12
-        pitch = Math.min(22, snapshot.positions.earth.elevationDeg / 2)
+        yaw = snapshot.positions.earth.azimuthDeg
+        pitch = Math.max(-65, Math.min(80, snapshot.positions.earth.elevationDeg))
         render()
       }
       const resize = () => {
@@ -252,7 +213,9 @@ function SurfaceScene() {
       setStatus(`Loading surface imagery, 0 / ${tiles.length}`)
       await concurrent(tiles, async ({ x, y }) => {
         abort.signal.throwIfAborted()
-        const url = layer.tileUrlTemplate.replace('{z}', String(patch.z)).replace('{x}', String(x)).replace('{y}', String(y))
+        const columns = layer.levelZeroColumns * 2 ** patch.z
+        const url = layer.tileUrlTemplate.replace('{z}', String(patch.z))
+          .replace('{x}', String(((x % columns) + columns) % columns)).replace('{y}', String(y))
         const response = await fetch(url, { signal: abort.signal })
         if (!response.ok) throw new Error(`Moon imagery could not load (${response.status}).`)
         const bitmap = await createImageBitmap(await response.blob())
@@ -280,13 +243,17 @@ function SurfaceScene() {
       for (const dispose of cleanup) dispose()
       for (const resource of resources.reverse()) resource.dispose()
     }
-  }, [])
+  }, [snapshot])
+
+  const site = { latitude: snapshot.latitudeDeg, longitude: normalizeLongitude(snapshot.longitudeDeg) }
+  const siteName = locationPresets.find(preset => Math.abs(preset.latitude - site.latitude) < 0.00001
+    && Math.abs(preset.longitude - site.longitude) < 0.00001)?.name ?? 'Lunar surface'
 
   return (
     <>
       <div className="surface-canvas" ref={hostRef} />
       <div className="surface-hud" aria-hidden="true">
-        <span className="surface-site">Marius Hills <span>14° N / 57° W</span></span>
+        <span className="surface-site">{siteName} <span>{locationLabel(site)}</span></span>
         <span className="surface-bearing" ref={bearingRef}>Looking toward Earth</span>
       </div>
       <span ref={earthLabelRef} className="surface-earth-label" hidden>Earth</span>
@@ -300,36 +267,18 @@ function SurfaceScene() {
   )
 }
 
-export default function SurfacePreview() {
-  const sectionRef = useRef<HTMLDivElement>(null)
-  const [visible, setVisible] = useState(false)
+export default function SurfacePreview({ snapshot }: { snapshot: SurfaceSnapshot }) {
   const [version, setVersion] = useState(0)
-  useEffect(() => {
-    const section = sectionRef.current
-    if (!section) return
-    const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) {
-        setVisible(true)
-        observer.disconnect()
-      }
-    }, { root: section.closest('.flow-viewport'), rootMargin: '150px' })
-    observer.observe(section)
-    return () => observer.disconnect()
-  }, [])
 
   return (
-    <div ref={sectionRef} className="surface-preview">
-      <div className="surface-heading">
-        <div><p className="surface-eyebrow">Surface preview</p><h2 id="surface-title">A view from the Moon.</h2></div>
-        <p>03 Dec 2026 <span>12:00 UTC</span><span>2 m above the ground</span></p>
-      </div>
-      <div className="surface-window">
-        {visible ? <SurfaceScene key={version} /> : <p className="surface-loading">Preparing the surface view...</p>}
-      </div>
-      <div className="surface-caption">
-        <p>Fixed position and time. NASA terrain and photographic imagery.</p>
+    <div className="surface-view surface-window">
+      <SurfaceScene key={version} snapshot={snapshot} />
+      <div className="surface-page-navigation">
         <button type="button" onClick={() => setVersion(value => value + 1)}>Reload view</button>
       </div>
+      <p className="surface-page-details">
+        {snapshot.timestamp.replace('T', ' ').replace('Z', ' UTC')} · {snapshot.eyeHeightM} m above the ground
+      </p>
     </div>
   )
 }

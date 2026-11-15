@@ -3,6 +3,7 @@ import type { CylindricalTerrainManifest, GeographicImageryLayer } from '@lunar-
 const radians = Math.PI / 180
 export const previewSite = { latitudeDeg: 14, longitudeDeg: 303, eyeHeightM: 2 } as const
 export const previewTimestamp = '2026-12-03T12:00:00Z'
+export interface SurfaceSite { latitudeDeg: number; longitudeDeg: number; eyeHeightM: number }
 
 export interface SurfaceSnapshot {
   timestamp: string
@@ -22,9 +23,10 @@ export function skyDirection(azimuthDeg: number, elevationDeg: number): [number,
 
 export function localSurfacePoint(
   latitudeDeg: number, longitudeDeg: number, heightM: number, groundM: number, radiusM: number,
+  site: SurfaceSite = previewSite,
 ): [number, number, number] {
-  const lat = latitudeDeg * radians, lat0 = previewSite.latitudeDeg * radians
-  const lon = (longitudeDeg - previewSite.longitudeDeg) * radians
+  const lat = latitudeDeg * radians, lat0 = site.latitudeDeg * radians
+  const lon = (longitudeDeg - site.longitudeDeg) * radians
   const radius = radiusM + heightM
   const cosine = Math.sin(lat) * Math.sin(lat0) + Math.cos(lat) * Math.cos(lat0) * Math.cos(lon)
   return [
@@ -34,18 +36,28 @@ export function localSurfacePoint(
   ]
 }
 
-export function imageryPatch(layer: GeographicImageryLayer) {
-  const z = layer.maxZoom
+export function imageryPatch(layer: GeographicImageryLayer, site: SurfaceSite = previewSite) {
+  let z = layer.maxZoom
+  const north = Math.min(90, site.latitudeDeg + 1), south = Math.max(-90, site.latitudeDeg - 1)
+  const polar = north === 90 || south === -90
+  const span = polar ? 180 : Math.min(180, 1 / Math.cos(site.latitudeDeg * radians))
+  const longitude = ((site.longitudeDeg + 180) % 360 + 360) % 360 - 180
+  const shift = site.longitudeDeg - longitude
+  // Keep polar atlases within the same download and canvas budget as other sites.
+  while (z > layer.minZoom) {
+    const columns = layer.levelZeroColumns * 2 ** z, rows = layer.levelZeroRows * 2 ** z
+    if ((Math.ceil(2 * span / 360 * columns) + 2) * (Math.ceil((north - south) / 180 * rows) + 2) <= 64) break
+    z--
+  }
   const columns = layer.levelZeroColumns * 2 ** z, rows = layer.levelZeroRows * 2 ** z
-  const longitude = previewSite.longitudeDeg - 360
-  const minX = Math.floor((longitude - 1 + 180) / 360 * columns)
-  const maxX = Math.floor((longitude + 1 + 180) / 360 * columns)
-  const minY = Math.floor((90 - previewSite.latitudeDeg - 1) / 180 * rows)
-  const maxY = Math.floor((90 - previewSite.latitudeDeg + 1) / 180 * rows)
+  const minX = polar ? 0 : Math.floor((longitude - span + 180) / 360 * columns)
+  const maxX = polar ? columns - 1 : Math.floor((longitude + span + 180) / 360 * columns)
+  const minY = Math.max(0, Math.floor((90 - north) / 180 * rows))
+  const maxY = Math.min(rows - 1, Math.floor((90 - south) / 180 * rows))
   return {
     z, minX, maxX, minY, maxY,
-    westDeg: minX / columns * 360 + 180,
-    eastDeg: (maxX + 1) / columns * 360 + 180,
+    westDeg: minX / columns * 360 - 180 + shift,
+    eastDeg: (maxX + 1) / columns * 360 - 180 + shift,
     northDeg: 90 - minY / rows * 180,
     southDeg: 90 - (maxY + 1) / rows * 180,
   }
@@ -74,24 +86,27 @@ export function sampleTerrain(
 
 /** Dense near the observer, coarser in the distance, with no height exaggeration. */
 function coordinate(start: number, center: number, end: number, index: number, segments: number) {
+  if (index === 0) return start
+  if (index === segments) return end
   const t = index / segments * 2 - 1
   return center + Math.sign(t) * t * t * (t < 0 ? center - start : end - center)
 }
 
 export function surfaceGrid(
   patch: ImageryPatch, radiusM: number, sample: (latitude: number, longitude: number) => number, segments = 512,
+  site: SurfaceSite = previewSite,
 ) {
-  const groundM = sample(previewSite.latitudeDeg, previewSite.longitudeDeg)
+  const groundM = sample(site.latitudeDeg, site.longitudeDeg)
   const size = segments + 1
   const positions = new Float32Array(size * size * 3)
   const uvs = new Float32Array(size * size * 2)
   const indices = new Uint32Array(segments * segments * 6)
   for (let row = 0; row <= segments; row++) {
-    const lat = coordinate(patch.southDeg, previewSite.latitudeDeg, patch.northDeg, segments - row, segments)
+    const lat = coordinate(patch.southDeg, site.latitudeDeg, patch.northDeg, segments - row, segments)
     for (let col = 0; col <= segments; col++) {
-      const lon = coordinate(patch.westDeg, previewSite.longitudeDeg, patch.eastDeg, col, segments)
+      const lon = coordinate(patch.westDeg, site.longitudeDeg, patch.eastDeg, col, segments)
       const index = row * size + col
-      positions.set(localSurfacePoint(lat, lon, sample(lat, lon), groundM, radiusM), index * 3)
+      positions.set(localSurfacePoint(lat, lon, sample(lat, lon), groundM, radiusM, site), index * 3)
       uvs.set([(lon - patch.westDeg) / (patch.eastDeg - patch.westDeg),
         (lat - patch.southDeg) / (patch.northDeg - patch.southDeg)], index * 2)
       if (row < segments && col < segments) {

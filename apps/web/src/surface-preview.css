@@ -1,6 +1,9 @@
-.flow-step.flow-step-surface {
-  align-items: center;
-  padding: 88px clamp(18px, 5.5vw, 88px) 60px;
+.planning-flow-layout .flow-step.flow-step-surface {
+  z-index: 2;
+  height: 100dvh;
+  padding: 0;
+  background: #000;
+  pointer-events: auto;
 }
 
 .surface-preview { width: 100%; max-width: 1440px; margin-inline: auto; pointer-events: auto; }
@@ -11,7 +14,7 @@
 .surface-heading > p span:last-child { color: var(--muted); }
 .surface-window { position: relative; height: clamp(360px, 62dvh, 760px); overflow: hidden; border: 1px solid #313244; border-radius: 12px; background: #000; isolation: isolate; }
 .surface-canvas { position: absolute; inset: 0; }
-.surface-canvas canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.surface-canvas canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; cursor: grab; }
 .surface-canvas canvas:active { cursor: grabbing; }
 .surface-canvas canvas:focus-visible { outline: 2px solid var(--lavender); outline-offset: -4px; }
 .surface-hud { position: absolute; inset: 0 0 auto; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 24px; background: linear-gradient(#0009, transparent); pointer-events: none; font-size: 12px; }
@@ -32,6 +35,15 @@
 .surface-caption button { flex: none; padding: 5px 0 5px 10px; border: 0; background: transparent; color: var(--subtext); font: inherit; font-size: 11px; cursor: pointer; }
 .surface-caption button:hover { color: var(--lavender); }
 
+.surface-view.surface-window { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; border: 0; border-radius: 0; }
+.surface-page-navigation { position: absolute; top: 0; right: 0; padding: max(18px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) 18px 24px; }
+.surface-page-navigation button { padding: 10px 13px; border: 1px solid #cdd6f433; border-radius: 5px; background: #11111ba6; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
+.surface-page-navigation button:hover { border-color: var(--lavender); color: #fff; }
+.surface-view .surface-hud { top: calc(64px + env(safe-area-inset-top)); background: none; }
+.surface-view .surface-error { top: calc(150px + env(safe-area-inset-top)); }
+.surface-page-details { position: absolute; left: 24px; right: 24px; bottom: calc(70px + env(safe-area-inset-bottom)); margin: 0; color: var(--subtext); font-size: 11px; line-height: 1.6; text-shadow: 0 1px 6px #000; pointer-events: none; }
+.surface-view .surface-controls { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+
 @media (max-width: 760px) {
   .surface-heading { align-items: flex-start; flex-direction: column; gap: 14px; margin-bottom: 18px; }
   .surface-heading > p { justify-content: flex-start; gap: 8px 16px; font-size: 11px; }
@@ -40,4 +52,6 @@
   .surface-controls { padding: 28px 16px 18px; }
   .surface-keyboard-hint { display: none; }
   .surface-caption { align-items: flex-start; }
+  .surface-page-navigation { padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right)); }
+  .surface-page-details { left: 16px; right: 16px; }
 }

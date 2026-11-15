@@ -32,6 +32,23 @@ function find<T extends Element = HTMLElement>(selector: string): T {
   return element
 }
 
+const onProgressChange = (progress: number, locationProgress: number) => {
+  progressChanges.push(progress)
+  locationProgressChanges.push(locationProgress)
+}
+
+function flow(surfaceAvailable = true, surfaceRevision = 0) {
+  return createElement(PlanningFlow, {
+    backdrop: createElement('canvas', { 'aria-label': 'Moon scene' }),
+    onProgressChange, surfaceAvailable, surfaceRevision,
+  },
+    createElement('section', { id: 'home', className: 'flow-step', tabIndex: -1 }, createElement('a', { href: '#plan' }, 'Start planning')),
+    createElement('section', { id: 'plan', className: 'flow-step', tabIndex: -1 }, createElement('input', { 'aria-label': 'Retained input', defaultValue: '09:30' })),
+    createElement('section', { id: 'location', className: 'flow-step', tabIndex: -1 }, 'Lunar location selector'),
+    surfaceAvailable && createElement('section', { id: 'surface', className: 'flow-step', tabIndex: -1 }, 'Submitted Moon surface'),
+  )
+}
+
 beforeEach(async () => {
   observers.length = 0
   window.history.replaceState(null, '', '/')
@@ -40,15 +57,7 @@ beforeEach(async () => {
   root = createRoot(container)
   progressChanges = []
   locationProgressChanges = []
-  await act(async () => root.render(createElement(PlanningFlow, {
-    backdrop: createElement('canvas', { 'aria-label': 'Moon scene' }),
-    onProgressChange: (progress, locationProgress) => { progressChanges.push(progress); locationProgressChanges.push(locationProgress) },
-  },
-    createElement('section', { id: 'home', className: 'flow-step', tabIndex: -1 }, createElement('a', { href: '#plan' }, 'Start planning')),
-    createElement('section', { id: 'plan', className: 'flow-step', tabIndex: -1 }, createElement('input', { 'aria-label': 'Retained input', defaultValue: '09:30' })),
-    createElement('section', { id: 'location', className: 'flow-step', tabIndex: -1 }, 'Lunar location selector'),
-    createElement('section', { id: 'surface', className: 'flow-step', tabIndex: -1 }, 'Fixed Moon surface preview'),
-  )))
+  await act(async () => root.render(flow()))
   viewport = find<HTMLDivElement>('.flow-viewport')
   find('.flow-column').getBoundingClientRect = () => ({ left: 88, width: 560 }) as DOMRect
   scrollCalls = []
@@ -128,7 +137,7 @@ test('hash navigation jumps to the requested section without an animation', asyn
   assert.equal(scrollCalls.at(-1)?.behavior, 'instant')
 })
 
-test('Surface opens the preview below the time picker and keeps the selected time mounted', async () => {
+test('Surface opens the submitted view below Location and keeps the selected time mounted', async () => {
   const input = find<HTMLInputElement>('input')
   await act(async () => find<HTMLAnchorElement>('.flow-navigation a[href="#surface"]').click())
   assert.equal(scrollCalls.at(-1)?.top, 2200)
@@ -137,6 +146,45 @@ test('Surface opens the preview below the time picker and keeps the selected tim
   assert.equal(window.document.title, 'Moon surface | Lunar Lense')
   assert.equal(find('input'), input)
   assert.equal(input.value, '09:30')
+  assert.equal(find<HTMLElement>('.flow-navigation').hidden, true)
+})
+
+test('Surface is absent before submission and each successful submission scrolls to the scene', async () => {
+  const input = find<HTMLInputElement>('input')
+  await act(async () => root.render(flow(false)))
+  assert.equal(container.querySelector('#surface'), null)
+  assert.equal(container.querySelector('.flow-navigation a[href="#surface"]'), null)
+  assert.equal(find('input'), input)
+
+  await act(async () => root.render(flow(true, 1)))
+  assert.equal(window.location.pathname, '/')
+  assert.equal(window.location.hash, '#surface')
+  assert.equal(find('#surface'), window.document.activeElement)
+  assert.ok(scrollCalls.some(call => call.behavior === 'smooth' && call.top! > 1600))
+  assert.equal(find('input'), input)
+
+  const surface = find('#surface')
+  Object.defineProperty(surface, 'offsetHeight', { value: 600 })
+  surface.getBoundingClientRect = () => ({ top: 2200 - viewport.scrollTop, bottom: 2800 - viewport.scrollTop, height: 600 }) as DOMRect
+
+  // Wheel scrolling over the scene can return to the still-mounted location inputs.
+  const wheel = new window.WheelEvent('wheel', { deltaY: -600, bubbles: true, cancelable: true })
+  surface.dispatchEvent(wheel)
+  assert.equal(wheel.defaultPrevented, false)
+  await act(async () => {
+    viewport.scrollTop = 1600
+    viewport.dispatchEvent(new window.Event('scroll'))
+    await new Promise(resolve => window.requestAnimationFrame(resolve))
+  })
+  assert.equal(find<HTMLElement>('.flow-navigation').hidden, false)
+  assert.equal(find('.flow-navigation a[href="#location"]').getAttribute('aria-current'), 'step')
+  input.value = '10:45'
+
+  await act(async () => root.render(flow(true, 2)))
+  assert.equal(scrollCalls.at(-1)?.top, 2200)
+  assert.equal(scrollCalls.at(-1)?.behavior, 'smooth')
+  assert.equal(find('input'), input)
+  assert.equal(input.value, '10:45')
 })
 
 test('Location navigation retains the mounted time input and supports returning to Time', async () => {

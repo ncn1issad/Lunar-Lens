@@ -1,22 +1,25 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent, ReactNode } from 'react'
 
-const steps = [{ id: 'home', label: 'Home' }, { id: 'plan', label: 'Time' }, { id: 'location', label: 'Location' }, { id: 'surface', label: 'Surface' }] as const
-type StepId = typeof steps[number]['id']
+const allSteps = [{ id: 'home', label: 'Home' }, { id: 'plan', label: 'Time' }, { id: 'location', label: 'Location' }, { id: 'surface', label: 'Surface' }] as const
+type StepId = typeof allSteps[number]['id']
 
 function stepTop(viewport: HTMLElement, section: HTMLElement) {
   const sections = [...viewport.querySelectorAll<HTMLElement>('.flow-step')]
   return sections.slice(0, sections.indexOf(section)).reduce((top, step) => top + step.offsetHeight, 0)
 }
 
-export default function PlanningFlow({ children, backdrop, onProgressChange, onStepChange }: {
+export default function PlanningFlow({ children, backdrop, onProgressChange, onStepChange, surfaceAvailable = false, surfaceRevision = 0 }: {
   children: ReactNode
   backdrop?: ReactNode
   onProgressChange?: (progress: number, locationProgress: number) => void
   onStepChange?: (step: StepId) => void
+  surfaceAvailable?: boolean
+  surfaceRevision?: number
 }) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const [active, setActive] = useState<StepId>('home')
+  const steps = useMemo(() => allSteps.filter(step => step.id !== 'surface' || surfaceAvailable), [surfaceAvailable])
 
   const goTo = useCallback((id: StepId, behavior: ScrollBehavior = 'smooth', focus = false) => {
     const viewport = viewportRef.current
@@ -56,6 +59,8 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
       if (frame === null) frame = window.requestAnimationFrame(updateActive)
     }
     const onResize = () => {
+      const contentWidth = sections[0]?.getBoundingClientRect().width
+      if (contentWidth) viewport.style.setProperty('--flow-scrollbar-width', `${viewport.getBoundingClientRect().width - contentWidth}px`)
       const column = viewport.parentElement?.getBoundingClientRect()
       if (column?.width) {
         viewport.style.setProperty('--flow-column-left', `${column.left}px`)
@@ -103,7 +108,13 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
       window.removeEventListener('hashchange', onLocationChange)
       window.removeEventListener('popstate', onLocationChange)
     }
-  }, [goTo, onProgressChange])
+  }, [goTo, onProgressChange, steps])
+
+  useEffect(() => {
+    if (!surfaceAvailable || surfaceRevision === 0) return
+    window.history.pushState(null, '', '#surface')
+    goTo('surface', 'smooth', true)
+  }, [goTo, surfaceAvailable, surfaceRevision])
 
   useEffect(() => {
     document.title = active === 'surface' ? 'Moon surface | Lunar Lense'
@@ -120,7 +131,7 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
 
   return (
     <div className="flow-column">
-      <nav className="flow-navigation" aria-label="Planning sections">
+      <nav className="flow-navigation" aria-label="Planning sections" hidden={active === 'surface'}>
         {steps.map(step => <a key={step.id} href={`#${step.id}`} aria-current={active === step.id ? 'step' : undefined}
           onClick={event => navigate(event, step.id)}>{step.label}</a>)}
       </nav>

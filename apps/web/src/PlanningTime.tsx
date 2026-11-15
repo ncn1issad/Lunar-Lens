@@ -38,9 +38,10 @@ function SectionIcon({ section }: { section: 'dates' | 'times' }) {
   </svg>
 }
 
-export default function PlanningTime({ embedded = false, onPreviewTimeChange }: {
+export default function PlanningTime({ embedded = false, onPreviewTimeChange, onRangeChange }: {
   embedded?: boolean
   onPreviewTimeChange?: (timestamp: number) => void
+  onRangeChange?: (range: PlanningTimeRange) => void
 }) {
   const [value, setValue] = useState(initialRange)
   const [selectedDay, setSelectedDay] = useState(() => value.endDate ?? value.startDate)
@@ -49,6 +50,8 @@ export default function PlanningTime({ embedded = false, onPreviewTimeChange }: 
   const [expanded, setExpanded] = useState<'dates' | 'times'>('dates')
   const heading = useRef<HTMLHeadingElement>(null)
   const resolved = resolveTimeRange(value)
+
+  useEffect(() => { onRangeChange?.(value) }, [value, onRangeChange])
 
   useEffect(() => { if (!embedded) heading.current?.focus({ preventScroll: true }) }, [embedded])
 

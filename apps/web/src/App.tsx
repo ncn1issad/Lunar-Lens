@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { TimelineResponse } from '@lunar-lense/contracts'
 import MoonGlobe from './MoonGlobe'
 import PlanningTime from './PlanningTime'
 import PlanningFlow from './PlanningFlow'
 import PlanningLocation from './PlanningLocation'
+import PlanningSubmit from './PlanningSubmit'
+import type { PlanningTimeRange } from './planning-time'
 import { initialLocationDraft, locationDraft, LOCATION_STORAGE_KEY, resolveLocation } from './planning-location'
 import type { LunarLocation } from './planning-location'
 import SurfacePreview from './SurfacePreview'
+import { savedSurfaceSnapshot, startSurfaceSnapshot, SURFACE_PLAN_STORAGE_KEY } from './surface-plan'
 import './planning.css'
 import './location.css'
 
@@ -25,9 +29,16 @@ const stars = Array.from({ length: 95 }, (_, index) => {
 })
 
 function App() {
+  const [surface, setSurface] = useState(() => ({ snapshot: savedSurfaceSnapshot(), revision: 0 }))
+  const openSurface = useCallback((timeline: TimelineResponse) => {
+    const snapshot = startSurfaceSnapshot(timeline)
+    try { sessionStorage.setItem(SURFACE_PLAN_STORAGE_KEY, JSON.stringify(snapshot)) } catch { /* The scene also works without storage. */ }
+    setSurface(current => ({ snapshot, revision: current.revision + 1 }))
+  }, [])
   const moonFrameRef = useRef<HTMLDivElement>(null)
   const layoutRef = useRef<HTMLElement>(null)
   const [previewTime, setPreviewTime] = useState<number | null>(null)
+  const [timeRange, setTimeRange] = useState<PlanningTimeRange | null>(null)
   const [planningActive, setPlanningActive] = useState(false)
   const [activeStep, setActiveStep] = useState('home')
   const [siteDraft, setSiteDraft] = useState(initialLocationDraft)
@@ -45,7 +56,7 @@ function App() {
   }, [])
 
   return (
-    <div className="home-page with-planning-flow">
+    <div className="home-page with-planning-flow" data-active-step={activeStep}>
       <svg className="star-field" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         {stars.map((star, index) => (
           <circle key={index} cx={star.x} cy={star.y} r={star.radius} opacity={star.opacity} />
@@ -53,7 +64,8 @@ function App() {
       </svg>
 
       <main ref={layoutRef} className="home-hero planning-flow-layout" data-active-step={activeStep}>
-        <PlanningFlow onProgressChange={updatePlanningProgress} onStepChange={setActiveStep} backdrop={
+        <PlanningFlow onProgressChange={updatePlanningProgress} onStepChange={setActiveStep}
+          surfaceAvailable={surface.snapshot !== null} surfaceRevision={surface.revision} backdrop={
           <div className="moon-backdrop">
             <MoonGlobe live framingRef={moonFrameRef} zoomEnabled={false} previewTime={planningActive ? previewTime : null}
               location={site} selectable={activeStep === 'location'} onLocationChange={selectSite} />
@@ -78,14 +90,16 @@ function App() {
             </div>
           </section>
           <section id="plan" className="flow-step" aria-labelledby="time-range-title" tabIndex={-1}>
-            <PlanningTime embedded onPreviewTimeChange={setPreviewTime} />
+            <PlanningTime embedded onPreviewTimeChange={setPreviewTime} onRangeChange={setTimeRange} />
           </section>
           <section id="location" className="flow-step flow-step-location" aria-labelledby="location-title" tabIndex={-1}>
             <PlanningLocation value={siteDraft} onChange={setSiteDraft} />
           </section>
-          <section id="surface" className="flow-step flow-step-surface" aria-labelledby="surface-title" tabIndex={-1}>
-            <SurfacePreview />
-          </section>
+          {surface.snapshot && <section id="surface" className="flow-step flow-step-surface" aria-label="Moon surface" tabIndex={-1}>
+            <SurfacePreview key={surface.revision} snapshot={surface.snapshot} />
+          </section>}
+          <PlanningSubmit timeRange={timeRange} siteDraft={siteDraft} visible={activeStep === 'plan' || activeStep === 'location'}
+            onSuccess={openSurface} />
         </PlanningFlow>
         <div ref={moonFrameRef} className="hero-moon" aria-hidden="true" />
       </main>

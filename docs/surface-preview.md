@@ -1,43 +1,44 @@
-# Fixed Moon surface preview
+# Submitted Moon surface view
 
-Open `/#surface`, or scroll past the time picker and select "Surface" in the
-page navigation. This is an independent visual experiment. The planning time
-picker does not change it.
+Submit a valid time range and lunar location on the main page. After the
+`/api/timeline` request succeeds, a Surface section appears directly below
+Location and the page scrolls to it at `/#surface`. The section fills the
+browser viewport. The navigation pill, Submit button and footer hide while
+Surface is active. Scrolling up returns to the still-mounted inputs; another
+successful submission replaces the scene and scrolls back down. Failed or
+cancelled requests leave the previous scene intact.
 
-- Site: Marius Hills, 14 degrees north and 57 degrees west (303 east).
-- Time: 2026-12-03 12:00:00 UTC.
-- Eye height: 2 m above the prepared SLDEM2015 terrain.
-- Drag the canvas or focus it and use arrow keys to look around. "Look toward
-  Earth" or the Home key restores the initial direction. The observer cannot
-  move, and the time remains fixed.
+The Surface section and its navigation link are absent until a location has
+been submitted successfully. A small starting snapshot persists for refresh
+in the current tab. Without a saved submission, `/#surface` falls back to Home.
+There is no separate `/surface` route or fixed demonstration scene.
 
-The scene initializes when the section approaches the visible viewport. It
-loads the existing regional float32 height tiles, checks their manifest hashes,
-and builds a mesh in local east/up/south coordinates. The mesh includes lunar
-curvature and has no vertical exaggeration. Its grid is denser near the observer;
-this does not add detail beyond the source DEM's roughly 60 m spacing.
+The scene uses the response's observer latitude, longitude, ground elevation
+and eye height, and the Earth and Sun directions at the selected start time.
+Later timeline samples are not displayed yet. The view initially faces the
+horizon. Drag or use arrow keys to look around; "Look toward Earth" or Home
+points the camera toward Earth. Mouse-wheel scrolling and vertical touch
+swipes scroll back to the inputs. "Reload view" rebuilds the submitted scene
+without repeating the timeline request.
 
-The WAC layer metadata and zoom-8 JPEGs come through `/api/imagery`. The atlas
-contains a 4 by 4 group of tiles around the observer. UVs use the geographic
-matrix directly, including the conversion between terrain's 0-360 longitudes
-and imagery's -180 to 180 convention. Each terrain/imagery batch has at most
-four requests in flight, and leaving the page or reloading the view cancels
-outstanding requests. No persistent cache is added.
+The global LDEM_64 numerical terrain matches the API's near-field calculation,
+with bilinear interpolation, longitude wrapping and the same averaged pole
+heights. Downloaded tiles are checked against their manifest hashes. The mesh
+has lunar curvature and no vertical exaggeration. Terrain and photographic
+imagery center on the returned observer. Polar imagery uses a lower zoom to
+keep its atlas within 64 tiles. Each batch has at most four downloads in
+flight, and replacing or reloading the scene cancels outstanding requests and
+releases the previous renderer's resources.
 
-Earth and the Sun use the captured Horizons directions and distances in
-`public/moon/surface-preview.json`. Their apparent sizes are not enlarged.
-The captured observer altitude is checked against the loaded terrain. A separate
-sky pass avoids depth precision problems for celestial objects, while terrain
-still occludes them. The black sky uses daytime exposure, with no star field.
+WAC layer metadata and JPEGs come through `/api/imagery`. UVs use its geographic
+matrix directly, including longitude wrapping. No persistent imagery cache is
+added. The API supplies azimuth and elevation but no body distances. Astronomy
+Engine estimates Earth and Sun distances at the start time solely for apparent
+disc sizes. Directions always come from the response. Separate sky and terrain
+passes preserve celestial depth while terrain still occludes the sky.
 
-WAC photographs already contain illumination. Directional light and terrain
-shadow mapping make the relief readable, but this combination does not establish
-physically correct shadows for the selected date. The Earth texture's clouds
-and orientation are illustrative. See `public/moon/README.md` for asset sources
-and the captured Horizons query.
-
-The implementation is in `SurfacePreview.tsx`, `surface-geometry.ts`, and
-`surface-preview.css`. Frontend tests check coordinate orientation, curvature,
-height interpolation across tile boundaries, atlas alignment, mesh winding,
-the frozen observer snapshot, request concurrency, and navigation below the
-time picker.
+Photographic imagery contains captured illumination, so its combination with
+the selected Sun direction is not physically accurate relighting. The Earth
+texture's clouds and orientation are illustrative. See `public/moon/README.md`
+for asset sources. The old Marius Hills snapshot remains as a geometry test
+fixture and is not loaded by the scene.
