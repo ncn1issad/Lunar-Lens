@@ -160,10 +160,9 @@
   .time-clocks { gap: 18px; }
 }
 
-/* The scene stays fixed while each input takes its turn in the left column. */
+/* The scene stays fixed while scrolling between Home, Planner and Surface. */
 .with-planning-flow { height: 100dvh; min-height: 0; }
 .planning-flow-layout.home-hero {
-  --planning-progress: 0;
   height: 100dvh;
   min-height: 0;
   flex: none;
@@ -172,10 +171,8 @@
 }
 .planning-flow-layout > .hero-moon {
   align-self: center;
-  width: calc(100% * (1 - var(--planning-progress) * 0.32));
-  height: calc(clamp(380px, 65vh, 680px) * (1 - var(--planning-progress) * 0.32));
-  margin-left: calc(32% * var(--planning-progress));
-  left: calc(clamp(12px, 2vw, 32px) * var(--planning-progress));
+  width: 100%;
+  height: clamp(380px, 65vh, 680px);
 }
 .flow-column { position: relative; min-width: 0; min-height: 0; height: 100%; pointer-events: auto; }
 .flow-navigation { position: fixed; z-index: 3; top: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 5px; border: 1px solid #45475a80; border-radius: 999px; background: #181825e6; box-shadow: 0 8px 30px #00000030; backdrop-filter: blur(16px); }
@@ -183,20 +180,27 @@
 .flow-navigation a { padding: 10px 22px; border-radius: 999px; color: var(--subtext); font-size: 12px; text-decoration: none; }
 .flow-navigation a:hover { color: var(--text); }
 .flow-navigation a[aria-current='step'] { background: #313244; color: var(--lavender); }
-.flow-viewport { position: fixed; inset: 0; height: 100dvh; overflow-y: auto; overflow-x: hidden; scroll-snap-type: y mandatory; overscroll-behavior-y: contain; scrollbar-width: thin; scrollbar-color: #45475a transparent; }
+.flow-viewport { position: fixed; inset: 0; height: 100dvh; overflow-y: auto; overflow-x: hidden; overflow-anchor: none; overscroll-behavior-y: contain; scrollbar-width: thin; scrollbar-color: #45475a transparent; }
 .flow-viewport:focus-visible { outline: 1px solid #b4befe55; outline-offset: -1px; }
-.flow-step { position: relative; z-index: 1; display: flex; align-items: center; min-height: 100%; padding: 80px 0 56px var(--flow-column-left, 18px); scroll-snap-align: center; scroll-snap-stop: always; pointer-events: none; }
+/* One sticky scene, with real scroll space supplied by the timeline track. */
+.flow-track { position: relative; }
+.flow-scene { position: sticky; top: 0; height: 100dvh; overflow: clip; }
+.flow-scene > .moon-backdrop { position: absolute; }
+.flow-step { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; min-height: 0; padding: 80px 18px 120px var(--flow-column-left, 18px); pointer-events: none; will-change: transform, opacity; }
+.flow-step[inert] { pointer-events: none; }
+.flow-step[inert] > * { pointer-events: none; }
 .flow-step:focus { outline: none; }
-.flow-step[data-overflow='true'] { scroll-snap-align: start; }
 .planning-flow-layout .flow-step > :is(.hero-copy, .planning-page) { width: var(--flow-column-width, min(560px, calc(100vw - 36px))); flex: none; pointer-events: auto; }
-.planning-flow-layout #plan > .planning-page { width: max(var(--flow-column-width, 0px), min(760px, calc(64vw - var(--flow-column-left, 18px)))); }
+.planning-flow-layout .flow-step-planner { z-index: 2; padding-inline: 18px; }
+.planner-controls { display: flex; justify-content: space-between; align-items: center; gap: 32px; width: 100%; min-width: 0; }
+.planning-flow-layout .planner-controls > .planning-page { flex: none; width: min(560px, calc(50vw - 34px)); max-height: calc(100dvh - 200px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: #45475a transparent; pointer-events: auto; }
 .with-planning-flow > .site-footer { position: fixed; right: 0; bottom: 0; width: auto; margin: 0; padding-block: 18px; }
 .with-planning-flow[data-active-step='surface'] > .site-footer { display: none; }
 
 .planning-submit {
   position: fixed;
   z-index: 4;
-  right: calc(var(--flow-scrollbar-width, 0px) + clamp(22px, 5.5vw, 88px) * (1 - var(--location-progress, 0)) + 18px * var(--location-progress, 0));
+  right: calc(var(--flow-scrollbar-width, 0px) + 18px);
   bottom: max(52px, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
@@ -272,8 +276,12 @@
 @media (max-width: 760px) {
   .planning-flow-layout.home-hero { display: block; padding-inline: 18px; }
   .flow-column { max-width: 560px; }
-  .planning-flow-layout > .hero-moon { position: fixed; z-index: -1; top: 18vh; right: 0; left: auto; margin-left: 0; width: calc(72vw * (1 - var(--planning-progress) * 0.32)); height: calc(60vh * (1 - var(--planning-progress) * 0.32)); pointer-events: none; }
-  .planning-flow-layout #plan > .planning-page { width: var(--flow-column-width, calc(100vw - 36px)); }
+  .planning-flow-layout { --planning-panel-width: min(560px, calc(100vw - 36px)); }
+  .planning-flow-layout > .hero-moon { position: fixed; z-index: -1; top: 18vh; right: 0; left: auto; margin-left: 0; width: 72vw; height: 60vh; pointer-events: none; }
+  .planner-controls { flex-direction: column; align-items: stretch; gap: 32px; max-height: calc(100dvh - 200px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: #45475a transparent; pointer-events: auto; }
+  .planning-flow-layout .planner-controls > .planning-page { width: 100%; max-height: none; overflow: visible; }
+  .planner-controls > .location-panel { order: -1; width: 100%; }
+  .planner-controls .range-section-panel[hidden] { display: none; }
   .flow-step { padding-block: 88px 64px; }
   .flow-step > .hero-copy { margin-inline: 0; }
   .planning-embedded .time-range-picker { background: #181825f5; }

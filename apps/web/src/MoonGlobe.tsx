@@ -119,6 +119,9 @@ export default function MoonGlobe({ live = false, framingRef, zoomEnabled = true
     controls.rotateSpeed = 0.6
     controls.minZoom = 0.5
     controls.maxZoom = 20
+    // OrbitControls defaults to blocking touch scrolling across the full canvas.
+    // A vertical swipe should still move the planning page.
+    renderer.domElement.style.touchAction = zoomEnabled ? 'none' : 'pan-y pinch-zoom'
 
     const render = () => renderer.render(scene, camera)
     let cameraTarget: Vector3 | null = null
@@ -275,7 +278,7 @@ export default function MoonGlobe({ live = false, framingRef, zoomEnabled = true
       detail.material.map = detail.color
       if (detail.material instanceof MeshPhongMaterial) detail.material.normalMap = detail.normal
       try {
-        // Decode, upload, and compile during Time instead of the first Location frame.
+        // Prepare the detail during preload instead of its first visible frame.
         await Promise.all([detail.color, detail.normal].map(map => (map?.image as HTMLImageElement | undefined)?.decode()))
         if (disposed) return detail
         renderer.initTexture(detail.color)
@@ -301,26 +304,32 @@ export default function MoonGlobe({ live = false, framingRef, zoomEnabled = true
 
     let renderedWidth = 0
     let renderedHeight = 0
-    let renderedFrame: { x: number; y: number; width: number; height: number; centered: boolean } | null = null
+    let renderedFrame: { x: number; y: number; width: number; height: number } | null = null
     const resize = () => {
       const { clientWidth: width, clientHeight: height } = container
       if (!width || !height) return
       const viewport = container.getBoundingClientRect()
       const frame = framingRef?.current?.getBoundingClientRect() ?? viewport
       if (!frame.width || !frame.height) return
+      const progress = Number(framingRef?.current?.dataset.plannerProgress ?? 0)
+      const diameter = Math.min(width, height * 1.1)
       const nextFrame = {
         x: frame.left - viewport.left,
         y: frame.top - viewport.top,
         width: frame.width,
         height: frame.height,
-        centered: selectionRef.current.selectable,
       }
+      // Follow the scroll continuously, including the transition through the
+      // active-section threshold. Selecting a section must not jump the camera.
+      nextFrame.x += ((width - diameter) / 2 - nextFrame.x) * progress
+      nextFrame.y += ((height - diameter) / 2 - nextFrame.y) * progress
+      nextFrame.width += (diameter - nextFrame.width) * progress
+      nextFrame.height += (diameter - nextFrame.height) * progress
       if (width === renderedWidth && height === renderedHeight && renderedFrame
         && nextFrame.x === renderedFrame.x && nextFrame.y === renderedFrame.y
-        && nextFrame.width === renderedFrame.width && nextFrame.height === renderedFrame.height
-        && nextFrame.centered === renderedFrame.centered) return
+        && nextFrame.width === renderedFrame.width && nextFrame.height === renderedFrame.height) return
       renderedFrame = nextFrame
-      frameMoonInViewport(camera, width, height, nextFrame, nextFrame.centered)
+      frameMoonInViewport(camera, width, height, nextFrame)
       if (width !== renderedWidth || height !== renderedHeight) {
         renderer.setSize(width, height)
         renderedWidth = width

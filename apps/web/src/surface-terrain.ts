@@ -1,6 +1,7 @@
 import type { GlobalTerrainManifest } from '@lunar-lense/contracts'
 import { concurrent, surfaceGrid } from './surface-geometry'
 import type { ImageryPatch, SurfaceSnapshot } from './surface-geometry'
+import { sha256Hex } from './sha256'
 
 const wrap = (value: number, size: number) => ((value % size) + size) % size
 
@@ -77,8 +78,7 @@ export async function plannedTerrain(patch: ImageryPatch, snapshot: SurfaceSnaps
     const response = await fetch(`${directory}${key}`, { signal })
     if (!response.ok) throw new Error('A global terrain tile could not load.')
     const buffer = await response.arrayBuffer()
-    const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buffer)))
-      .map(value => value.toString(16).padStart(2, '0')).join('')
+    const hash = await sha256Hex(buffer)
     if (buffer.byteLength !== m.tileSize ** 2 * 2 || hash !== m.tiles[key]) {
       throw new Error('A global terrain tile failed its integrity check.')
     }

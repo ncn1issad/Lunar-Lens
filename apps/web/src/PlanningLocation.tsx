@@ -16,8 +16,8 @@ export default function PlanningLocation({ value, onChange, recentLocations = []
     </button>
   }
   return (
-    <section className="location-panel" aria-labelledby="location-title">
-      <header className="planning-heading"><h2 id="location-title">Location</h2><p>Click the Moon or enter coordinates.</p></header>
+    <section className="location-panel" aria-labelledby="planner-title">
+      <header className="planning-heading"><h2 id="planner-title">Planner</h2><p>Click the Moon or enter coordinates.</p></header>
       <div className="location-picker">
         <h3 className="location-section-heading">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1 1 14 0Z" /><circle cx="12" cy="10" r="2.5" /></svg>

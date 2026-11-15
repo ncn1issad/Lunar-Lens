@@ -10,7 +10,7 @@ test('texture quality respects GPU limits and smaller devices', () => {
   assert.equal(globeTextureSize(2048, false), 2048)
 })
 
-test('the home globe does not request large maps; Location upgrades once and reuses them', async () => {
+test('base quality stays lightweight until preload or Planner requests the detail', async () => {
   let loads = 0
   const applied: (string | null)[] = []
   const released: string[] = []
@@ -29,7 +29,7 @@ test('the home globe does not request large maps; Location upgrades once and reu
   assert.deepEqual(released, ['8k maps'])
 })
 
-test('Time preloads the detail without applying it, and Location reuses the prepared resource', async () => {
+test('page load preloads the detail without applying it, and Planner reuses the prepared resource', async () => {
   let loads = 0
   const applied: (string | null)[] = []
   const released: string[] = []
@@ -50,7 +50,7 @@ test('Time preloads the detail without applying it, and Location reuses the prep
   assert.deepEqual(released, ['prepared maps'])
 })
 
-test('entering Location before the Time preload finishes shares the pending load', async () => {
+test('entering Planner before the initial preload finishes shares the pending load', async () => {
   let loads = 0
   let finish!: (value: string) => void
   const applied: (string | null)[] = []
@@ -68,7 +68,7 @@ test('entering Location before the Time preload finishes shares the pending load
   controller.dispose()
 })
 
-test('unmount during a Time preload releases the late resource without applying it', async () => {
+test('unmount during the initial preload releases the late resource without applying it', async () => {
   let finish!: (value: string) => void
   const applied: (string | null)[] = []
   const released: string[] = []
@@ -82,7 +82,7 @@ test('unmount during a Time preload releases the late resource without applying 
   assert.deepEqual(released, ['late maps'])
 })
 
-test('leaving Location during loading keeps the home texture and still caches the upgrade', async () => {
+test('leaving Planner during loading keeps the home texture and still caches the upgrade', async () => {
   let finish!: (value: string) => void
   const applied: (string | null)[] = []
   const controller = createGlobeQualityController(() => new Promise<string>(resolve => { finish = resolve }), value => applied.push(value), () => {})

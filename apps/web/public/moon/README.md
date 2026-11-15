@@ -10,14 +10,14 @@
 Used for the globe's appearance only. The globe is a sphere and does not use
 elevation displacement or the visibility API.
 
-The Location selector upgrades to `color-8k.jpg` (8192 × 4096) and
+The Planner globe upgrades to `color-8k.jpg` (8192 × 4096) and
 `normal-4k.png` (4096 × 2048). Smaller screens, devices reporting 4 GB or less
 memory, or GPUs limited to 4K use `color-4k.jpg` and `normal-2k.png` instead.
-GPUs limited below 4K retain `color.jpg`. Higher-detail files preload when
-Time becomes active, including image decoding, GPU upload and shader preparation.
-Entering Location directly also starts loading; the low-resolution globe
-remains visible until the detailed resources are ready.
-Returning to Home or Time restores the preview, and the detailed textures are
+GPUs limited below 4K retain `color.jpg`. Higher-detail files preload as soon
+as the site loads, including image decoding, GPU upload and shader preparation.
+The low-resolution globe remains visible on Home and until the detailed
+resources are ready in Planner.
+Returning to Home restores the preview, and the detailed textures are
 reused during the same page session.
 
 The detailed color maps are JPEG conversions of NASA's 2019 8K LROC map:

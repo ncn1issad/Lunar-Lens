@@ -2,7 +2,7 @@
 
 Submit a valid time range and lunar location on the main page. After the
 `/api/timeline` request succeeds, a Surface section appears directly below
-Location and the page scrolls to it at `/#surface`. The section fills the
+Planner and the page scrolls to it at `/#surface`. The section fills the
 browser viewport. The navigation pill, Submit button and footer hide while
 Surface is active. Scrolling up returns to the still-mounted inputs; another
 successful submission replaces the scene and scrolls back down. Failed or
@@ -23,8 +23,11 @@ without repeating the timeline request.
 
 The global LDEM_64 numerical terrain matches the API's near-field calculation,
 with bilinear interpolation, longitude wrapping and the same averaged pole
-heights. Downloaded tiles are checked against their manifest hashes. The mesh
-has lunar curvature and no vertical exaggeration. Terrain and photographic
+heights. Downloaded tiles are checked against their manifest hashes with native
+SHA-256 where available, or a JavaScript SHA-256 fallback on plain HTTP LAN
+addresses, where the browser does not expose `crypto.subtle`. Integrity checks
+remain enabled in both cases. The mesh has lunar curvature and no vertical
+exaggeration. Terrain and photographic
 imagery center on the returned observer. Polar imagery uses a lower zoom to
 keep its atlas within 64 tiles. Each batch has at most four downloads in
 flight, and replacing or reloading the scene cancels outstanding requests and

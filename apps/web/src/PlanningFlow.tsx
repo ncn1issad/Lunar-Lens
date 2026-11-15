@@ -1,82 +1,188 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent, ReactNode } from 'react'
+import { gsap } from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { ScrollToPlugin } from 'gsap/ScrollToPlugin'
+import { planningScrollLayout, resizePlanningScroll, SECTION_LINK_SECONDS, settlePlanningScroll } from './planning-scroll'
 
-const allSteps = [{ id: 'home', label: 'Home' }, { id: 'plan', label: 'Time' }, { id: 'location', label: 'Location' }, { id: 'surface', label: 'Surface' }] as const
+gsap.registerPlugin(ScrollTrigger, ScrollToPlugin)
+
+const allSteps = [{ id: 'home', label: 'Home' }, { id: 'planner', label: 'Planner' }, { id: 'surface', label: 'Surface' }] as const
 type StepId = typeof allSteps[number]['id']
-
-function stepTop(viewport: HTMLElement, section: HTMLElement) {
-  const sections = [...viewport.querySelectorAll<HTMLElement>('.flow-step')]
-  return sections.slice(0, sections.indexOf(section)).reduce((top, step) => top + step.offsetHeight, 0)
-}
+const clamp = (value: number) => Math.max(0, Math.min(1, value))
 
 export default function PlanningFlow({ children, backdrop, onProgressChange, onStepChange, surfaceAvailable = false, surfaceRevision = 0 }: {
   children: ReactNode
   backdrop?: ReactNode
-  onProgressChange?: (progress: number, locationProgress: number) => void
+  onProgressChange?: (progress: number) => void
   onStepChange?: (step: StepId) => void
   surfaceAvailable?: boolean
   surfaceRevision?: number
 }) {
   const viewportRef = useRef<HTMLDivElement>(null)
+  const trackRef = useRef<HTMLDivElement>(null)
+  const callbacksRef = useRef({ onProgressChange, onStepChange })
+  const initializedRef = useRef(false)
+  const targetRef = useRef<(id: StepId, behavior: ScrollBehavior, focus: boolean) => void>(() => {})
+  const pendingFocusRef = useRef<StepId | null>(null)
   const [active, setActive] = useState<StepId>('home')
   const steps = useMemo(() => allSteps.filter(step => step.id !== 'surface' || surfaceAvailable), [surfaceAvailable])
-
+  useLayoutEffect(() => { callbacksRef.current = { onProgressChange, onStepChange } })
   const goTo = useCallback((id: StepId, behavior: ScrollBehavior = 'smooth', focus = false) => {
-    const viewport = viewportRef.current
-    const section = viewport?.querySelector<HTMLElement>(`#${id}`)
-    if (!viewport || !section) return
-    const top = stepTop(viewport, section) - Math.max(0, (viewport.clientHeight - section.offsetHeight) / 2)
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    viewport.scrollTo({ top: Math.max(0, top), behavior: reduceMotion ? 'instant' : behavior })
-    setActive(id)
-    if (focus) section.focus({ preventScroll: true })
+    targetRef.current(id, behavior, focus)
   }, [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const viewport = viewportRef.current
-    if (!viewport) return
-    const sections = [...viewport.querySelectorAll<HTMLElement>('.flow-step')]
-    const timePicker = viewport.querySelector<HTMLElement>('.time-range-picker')
-    let frame: number | null = null
+    const track = trackRef.current
+    if (!viewport || !track) return
+    const sections = [...track.querySelectorAll<HTMLElement>('.flow-step')]
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    let layout = planningScrollLayout(viewport.clientHeight, steps.length)
+    let timeline: gsap.core.Timeline
+    let trigger: ScrollTrigger
+    let lastActive = ''
+    let resizeFrame = 0
+    let previousHeight = viewport.clientHeight
+    let refreshing = false
+    let navigationTween: gsap.core.Tween | null = null
+    const playhead = { phase: 0 }
+    const stopNavigation = () => {
+      navigationTween?.kill()
+      navigationTween = null
+      pendingFocusRef.current = null
+    }
 
-    const updateActive = () => {
-      frame = null
-      const firstInput = sections[1]
-      const inputTop = firstInput ? stepTop(viewport, firstInput) - Math.max(0, (viewport.clientHeight - firstInput.offsetHeight) / 2) : 0
-      const location = sections.find(section => section.id === 'location')
-      const locationTop = location ? stepTop(viewport, location) : inputTop
-      const locationProgress = locationTop > inputTop ? Math.min(1, Math.max(0, (viewport.scrollTop - inputTop) / (locationTop - inputTop))) : 0
-      onProgressChange?.(inputTop > 0 ? Math.min(1, Math.max(0, viewport.scrollTop / inputTop)) : 0, locationProgress)
-      const bounds = viewport.getBoundingClientRect()
-      const center = bounds.top + bounds.height / 2
-      const current = sections.findLast(section => {
-        const rect = section.getBoundingClientRect()
-        return rect.top <= center && rect.bottom > center
+    const render = () => {
+      // ScrollTrigger briefly rewinds animations while it measures. Keep focus
+      // and accessibility state on the visible page throughout that measurement.
+      if (refreshing) return
+      const phase = motionQuery.matches ? Math.round(playhead.phase) : playhead.phase
+      const planning = clamp(phase)
+      const surface = clamp(phase - 1)
+      const current = steps[Math.min(steps.length - 1, Math.round(phase))].id
+      callbacksRef.current.onProgressChange?.(planning)
+      for (const section of sections) {
+        let opacity = 0
+        let x = 0
+        let y = 0
+        if (section.id === 'home') { opacity = 1 - planning; y = -48 * planning }
+        if (section.id === 'planner') {
+          opacity = planning * (1 - surface)
+          x = 64 * (1 - planning)
+          y = -32 * surface
+        }
+        if (section.id === 'surface') { opacity = surface; y = 48 * (1 - surface) }
+        section.style.opacity = String(opacity)
+        section.style.visibility = opacity > 0.001 ? 'visible' : 'hidden'
+        section.style.transform = `translate3d(${x}px, ${y}px, 0)`
+        // Mounted inputs retain their values, but offscreen controls cannot take focus.
+        const interactive = opacity > 0.5
+        section.inert = !interactive
+        section.setAttribute('aria-hidden', String(!interactive))
+      }
+      if (current !== lastActive) {
+        lastActive = current
+        setActive(current)
+      }
+      const pending = pendingFocusRef.current
+      const section = sections.find(section => section.id === pending)
+      if (section && !section.inert && current === pending) {
+        section.focus({ preventScroll: true })
+        pendingFocusRef.current = null
+      }
+    }
+
+    const build = () => {
+      trigger?.kill(false)
+      timeline?.kill()
+      layout = planningScrollLayout(viewport.clientHeight, steps.length)
+      track.style.height = `${viewport.clientHeight + layout.distance}px`
+      playhead.phase = 0
+      timeline = gsap.timeline({ paused: true, onUpdate: render })
+      // Explicit gaps between these tweens are the page holds.
+      for (const [index, transition] of layout.transitions.entries()) {
+        timeline.to(playhead, { phase: index + 1, duration: transition.end - transition.start, ease: 'power1.inOut' }, transition.start)
+      }
+      timeline.to({}, { duration: layout.distance }, 0)
+      trigger = ScrollTrigger.create({
+        trigger: track,
+        scroller: viewport,
+        start: 'top top',
+        end: () => layout.distance,
+        animation: timeline,
+        scrub: true,
+        onRefreshInit: () => { refreshing = true },
+        onRefresh: () => { refreshing = false; render() },
+        snap: motionQuery.matches ? undefined : {
+          snapTo: value => navigationTween ? value : settlePlanningScroll(value * layout.distance, layout) / layout.distance,
+          inertia: false,
+          directional: false,
+          delay: 0.18,
+          duration: { min: 0.35, max: 0.65 },
+        },
       })
-      if (current && steps.some(step => step.id === current.id)) setActive(current.id as StepId)
+      trigger.refresh()
+      // Restore the exact scene immediately, including when Surface is added.
+      timeline.time(Math.min(viewport.scrollTop, layout.distance))
+      render()
     }
-    const onScroll = () => {
-      if (frame === null) frame = window.requestAnimationFrame(updateActive)
+
+    targetRef.current = (id, behavior, focus) => {
+      const index = steps.findIndex(step => step.id === id)
+      if (index < 0) return
+      stopNavigation()
+      pendingFocusRef.current = focus ? id : null
+      const snapTween = trigger.getTween(true)
+      if (snapTween) snapTween.kill()
+      const top = layout.targets[index]
+      if (behavior === 'smooth' && !motionQuery.matches && Math.abs(top - viewport.scrollTop) > 1) {
+        navigationTween = gsap.to(viewport, {
+          scrollTo: { y: top, autoKill: true, onAutoKill: stopNavigation },
+          duration: SECTION_LINK_SECONDS,
+          ease: 'sine.inOut',
+          onComplete: () => { navigationTween = null },
+        })
+        return
+      }
+      viewport.scrollTo({ top, behavior: 'instant' })
+      trigger.update()
+      // Instant navigation and browser back/forward need no animation frame.
+      timeline.time(Math.min(viewport.scrollTop, layout.distance))
+      render()
     }
-    const onResize = () => {
-      const contentWidth = sections[0]?.getBoundingClientRect().width
-      if (contentWidth) viewport.style.setProperty('--flow-scrollbar-width', `${viewport.getBoundingClientRect().width - contentWidth}px`)
+
+    const measure = () => {
       const column = viewport.parentElement?.getBoundingClientRect()
       if (column?.width) {
         viewport.style.setProperty('--flow-column-left', `${column.left}px`)
         viewport.style.setProperty('--flow-column-width', `${column.width}px`)
       }
-      const pickerHeight = timePicker?.getBoundingClientRect().height
-      if (pickerHeight) viewport.style.setProperty('--time-picker-height', `${pickerHeight}px`)
-      for (const section of sections) {
-        // Tall inputs remain freely scrollable instead of snapping past their controls.
-        section.dataset.overflow = String(section.offsetHeight > viewport.clientHeight + 1)
-      }
-      onScroll()
+      viewport.style.setProperty('--flow-scrollbar-width', `${Math.max(0, viewport.offsetWidth - viewport.clientWidth)}px`)
     }
+    const onResize = () => {
+      cancelAnimationFrame(resizeFrame)
+      resizeFrame = requestAnimationFrame(() => {
+        measure()
+        if (viewport.clientHeight !== previousHeight) {
+          stopNavigation()
+          // Keep the same place in the story after rotating/resizing the screen.
+          const top = resizePlanningScroll(viewport.scrollTop, layout, planningScrollLayout(viewport.clientHeight, steps.length))
+          previousHeight = viewport.clientHeight
+          build()
+          viewport.scrollTo({ top, behavior: 'instant' })
+          trigger.update()
+          timeline.time(viewport.scrollTop)
+        }
+        render()
+      })
+    }
+    const onPreferenceChange = () => { stopNavigation(); build(); render() }
     const onLocationChange = () => {
-      const id = window.location.hash.slice(1)
+      const hash = window.location.hash.slice(1)
+      const id = hash === 'plan' || hash === 'location' ? 'planner' : hash
       const step = steps.find(step => step.id === id) ?? steps[0]
+      if (id !== hash) window.history.replaceState(null, '', `#${id}`)
       goTo(step.id, 'instant')
     }
     const onSectionLink = (event: globalThis.MouseEvent) => {
@@ -88,27 +194,32 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
       goTo(step.id, 'smooth', true)
     }
 
+    measure()
+    build()
     const observer = new ResizeObserver(onResize)
     observer.observe(viewport)
     if (viewport.parentElement) observer.observe(viewport.parentElement)
-    if (timePicker) observer.observe(timePicker)
-    for (const section of sections) observer.observe(section)
-    viewport.addEventListener('scroll', onScroll, { passive: true })
     viewport.addEventListener('click', onSectionLink)
     window.addEventListener('hashchange', onLocationChange)
     window.addEventListener('popstate', onLocationChange)
-    onResize()
-    onLocationChange()
+    motionQuery.addEventListener('change', onPreferenceChange)
+    if (!initializedRef.current) {
+      initializedRef.current = true
+      onLocationChange()
+    }
 
     return () => {
+      stopNavigation()
       observer.disconnect()
-      if (frame !== null) window.cancelAnimationFrame(frame)
-      viewport.removeEventListener('scroll', onScroll)
+      cancelAnimationFrame(resizeFrame)
+      trigger.kill(false)
+      timeline.kill()
       viewport.removeEventListener('click', onSectionLink)
       window.removeEventListener('hashchange', onLocationChange)
       window.removeEventListener('popstate', onLocationChange)
+      motionQuery.removeEventListener('change', onPreferenceChange)
     }
-  }, [goTo, onProgressChange, steps])
+  }, [goTo, steps])
 
   useEffect(() => {
     if (!surfaceAvailable || surfaceRevision === 0) return
@@ -118,9 +229,9 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
 
   useEffect(() => {
     document.title = active === 'surface' ? 'Moon surface | Lunar Lense'
-      : active === 'location' ? 'Location | Lunar Lense' : active === 'plan' ? 'Time range | Lunar Lense' : 'Lunar Lense'
-    onStepChange?.(active)
-  }, [active, onStepChange])
+      : active === 'planner' ? 'Planner | Lunar Lense' : 'Lunar Lense'
+    callbacksRef.current.onStepChange?.(active)
+  }, [active])
 
   const navigate = (event: MouseEvent<HTMLAnchorElement>, id: StepId) => {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
@@ -136,8 +247,12 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
           onClick={event => navigate(event, step.id)}>{step.label}</a>)}
       </nav>
       <div ref={viewportRef} className="flow-viewport" role="region" aria-label="Planning inputs" tabIndex={0}>
-        {backdrop}
-        {children}
+        <div ref={trackRef} className="flow-track">
+          <div className="flow-scene">
+            {backdrop}
+            {children}
+          </div>
+        </div>
       </div>
     </div>
   )

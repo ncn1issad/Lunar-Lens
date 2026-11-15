@@ -40,7 +40,6 @@ function App() {
     setSurface(current => ({ snapshot, revision: current.revision + 1 }))
   }, [])
   const moonFrameRef = useRef<HTMLDivElement>(null)
-  const layoutRef = useRef<HTMLElement>(null)
   const [previewTime, setPreviewTime] = useState<number | null>(null)
   const [timeRange, setTimeRange] = useState<PlanningTimeRange | null>(null)
   const [planningActive, setPlanningActive] = useState(false)
@@ -53,9 +52,10 @@ function App() {
       try { sessionStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(siteDraft)) } catch { /* Editing works without storage. */ }
     }
   }, [site, siteDraft])
-  const updatePlanningProgress = useCallback((progress: number, locationProgress: number) => {
-    layoutRef.current?.style.setProperty('--planning-progress', String(progress))
-    layoutRef.current?.style.setProperty('--location-progress', String(locationProgress))
+  const updatePlanningProgress = useCallback((progress: number) => {
+    if (moonFrameRef.current) {
+      moonFrameRef.current.dataset.plannerProgress = String(progress)
+    }
     setPlanningActive(progress > 0)
   }, [])
 
@@ -67,13 +67,12 @@ function App() {
         ))}
       </svg>
 
-      <main ref={layoutRef} className="home-hero planning-flow-layout" data-active-step={activeStep}>
+      <main className="home-hero planning-flow-layout" data-active-step={activeStep}>
         <PlanningFlow onProgressChange={updatePlanningProgress} onStepChange={setActiveStep}
           surfaceAvailable={surface.snapshot !== null} surfaceRevision={surface.revision} backdrop={
           <div className="moon-backdrop">
-            <MoonGlobe live framingRef={moonFrameRef} zoomEnabled={false} previewTime={planningActive ? previewTime : null}
-              preloadDetail={activeStep === 'plan'}
-              location={site} selectable={activeStep === 'location'} onLocationChange={selectSite} />
+            <MoonGlobe live preloadDetail framingRef={moonFrameRef} zoomEnabled={false} previewTime={planningActive ? previewTime : null}
+              location={site} selectable={activeStep === 'planner'} onLocationChange={selectSite} />
           </div>
         }>
           <section id="home" className="flow-step" aria-labelledby="home-title" tabIndex={-1}>
@@ -86,7 +85,7 @@ function App() {
                 <span className="brand-name"><span>Lunar</span><span>Lense</span></span>
               </h1>
               <p>Plan around communication windows and solar power availability at your lunar site.</p>
-              <a className="start-planning" href="#plan">
+              <a className="start-planning" href="#planner">
                 Start planning
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
@@ -94,16 +93,16 @@ function App() {
               </a>
             </div>
           </section>
-          <section id="plan" className="flow-step" aria-labelledby="time-range-title" tabIndex={-1}>
-            <PlanningTime embedded onPreviewTimeChange={setPreviewTime} onRangeChange={setTimeRange} />
-          </section>
-          <section id="location" className="flow-step flow-step-location" aria-labelledby="location-title" tabIndex={-1}>
-            <PlanningLocation value={siteDraft} onChange={setSiteDraft} recentLocations={recentLocations} />
+          <section id="planner" className="flow-step flow-step-planner" aria-labelledby="planner-title" tabIndex={-1}>
+            <div className="planner-controls">
+              <PlanningTime embedded onPreviewTimeChange={setPreviewTime} onRangeChange={setTimeRange} />
+              <PlanningLocation value={siteDraft} onChange={setSiteDraft} recentLocations={recentLocations} />
+            </div>
           </section>
           {surface.snapshot && <section id="surface" className="flow-step flow-step-surface" aria-label="Moon surface" tabIndex={-1}>
             <SurfacePreview key={surface.revision} snapshot={surface.snapshot} />
           </section>}
-          <PlanningSubmit timeRange={timeRange} siteDraft={siteDraft} visible={activeStep === 'plan' || activeStep === 'location'}
+          <PlanningSubmit timeRange={timeRange} siteDraft={siteDraft} visible={activeStep === 'planner'}
             onSuccess={openSurface} />
         </PlanningFlow>
         <div ref={moonFrameRef} className="hero-moon" aria-hidden="true" />
