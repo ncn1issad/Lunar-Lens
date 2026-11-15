@@ -11,11 +11,12 @@ const { act, createElement, useState } = await import('react')
 const { createRoot } = await import('react-dom/client')
 const { default: PlanningLocation } = await import('../src/PlanningLocation.tsx')
 const { initialLocationDraft, LOCATION_STORAGE_KEY } = await import('../src/planning-location.ts')
+type LunarLocation = import('../src/planning-location.ts').LunarLocation
 let root: ReturnType<typeof createRoot>
 let container: HTMLDivElement
-function Harness() {
+function Harness({ recentLocations = [] }: { recentLocations?: LunarLocation[] }) {
   const [value, onChange] = useState(initialLocationDraft)
-  return createElement(PlanningLocation, { value, onChange })
+  return createElement(PlanningLocation, { value, onChange, recentLocations })
 }
 function find<T extends Element = HTMLElement>(selector: string): T {
   const element = container.querySelector<T>(selector)
@@ -47,6 +48,28 @@ test('presets update both coordinate fields and the selected row', async () => {
   assert.equal(find<HTMLInputElement>('#site-longitude').value, '23.47314')
   assert.equal(apollo.getAttribute('aria-pressed'), 'true')
   assert.equal(container.querySelectorAll('[aria-pressed="true"]').length, 1)
+})
+
+test('presets and recent custom locations have separate columns with an empty history hint', () => {
+  assert.equal(container.querySelectorAll('.location-column').length, 2)
+  assert.equal(find('[aria-label="Preset lunar locations"]').querySelectorAll('button').length, 9)
+  assert.equal(find('[aria-label="Recent custom locations"]').querySelectorAll('button').length, 0)
+  assert.match(find('.location-empty').textContent!, /after you submit/)
+})
+
+test('recent custom locations can be selected again without adding them to the presets', async () => {
+  await act(async () => root.render(createElement(Harness, {
+    recentLocations: [{ latitude: -42.12345, longitude: 87.65432 }, { latitude: 15, longitude: -57 }],
+  })))
+  const recent = find('[aria-label="Recent custom locations"]')
+  assert.equal(recent.querySelectorAll('button').length, 2)
+  assert.equal(container.querySelector('.location-empty'), null)
+  await act(async () => recent.querySelector<HTMLButtonElement>('button')!.click())
+  assert.equal(find<HTMLInputElement>('#site-latitude').value, '-42.12345')
+  assert.equal(find<HTMLInputElement>('#site-longitude').value, '87.65432')
+  assert.equal(recent.querySelector('button')!.getAttribute('aria-pressed'), 'true')
+  assert.equal(container.querySelectorAll('[aria-pressed="true"]').length, 1)
+  assert.equal(find('[aria-label="Preset lunar locations"]').querySelectorAll('button').length, 9)
 })
 
 test('typed coordinates validate globally and match equivalent east-positive presets', async () => {

@@ -298,6 +298,16 @@ test('timeline parser uses column labels and handles Gregorian day/year rollover
   assert.equal(parseTimeline(single, 'Earth', { ...query, end: '2026-11-14T00:01:00Z' }).length, 1);
 });
 
+test('timeline accepts minute precision returned by live Horizons and still checks the exact sample grid', () => {
+  const payload = { result: earth.result
+    .replace('Date__(UT)__HR:MN:SS', 'Date__(UT)__HR:MN')
+    .replace(/(2026-Nov-14 \d{2}:\d{2}):00/g, '$1') }
+  assert.deepEqual(parseTimeline(payload, 'Earth', query), parseTimeline(earth, 'Earth', query))
+  assert.throws(() => parseTimeline(payload, 'Earth', {
+    ...query, start: '2026-11-14T00:00:01Z', end: '2026-11-14T02:00:01Z',
+  }), /unexpected timestamps/)
+});
+
 test('timeline rejects incomplete tables, missing or duplicate timestamps and unusable angles', () => {
   const replace = (before: string, after: string) => ({ result: earth.result.replace(before, after) });
   for (const payload of [

@@ -110,18 +110,18 @@ export function parseTimeline(payload: unknown, name: string, query: TimelineEph
     || !radii || radii.slice(1).some(value => Number(value) !== 1737.4)) {
     throw new HorizonsError(`Horizons returned an unsupported lunar observer frame or reference sphere for ${name}.`);
   }
-  const timeColumn = header.findIndex((column) => /^Date__\(UT\)__HR:MN:(?:SS|SC)(?:\.fff)?$/.test(column));
+  const timeColumn = header.findIndex((column) => /^Date__\(UT\)__HR:MN(?::(?:SS|SC)(?:\.fff)?)?$/.test(column));
   if (timeColumn < 0 || rows.length !== timelineSampleCount(query)) {
     throw new HorizonsError(`Horizons returned an incomplete or unexpected timeline for ${name}.`);
   }
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return rows.map((row, index) => {
-    const match = /^(\d{4})-([A-Za-z]{3})-(\d{2}) (\d{2}:\d{2}:\d{2})(?:\.0+)?$/.exec(row[timeColumn] ?? '');
+    const match = /^(\d{4})-([A-Za-z]{3})-(\d{2}) (\d{2}:\d{2})(?::(\d{2})(?:\.0+)?)?$/.exec(row[timeColumn] ?? '');
     if (!match || !months.includes(match[2]!)) {
       throw new HorizonsError(`Cannot read ${name}'s UTC timestamps from Horizons.`);
     }
     const month = String(months.indexOf(match[2]!) + 1).padStart(2, '0');
-    const timestamp = `${match[1]}-${month}-${match[3]}T${match[4]}Z`;
+    const timestamp = `${match[1]}-${month}-${match[3]}T${match[4]}:${match[5] ?? '00'}Z`;
     const expected = new Date(Date.parse(query.start) + index * query.stepMinutes * 60_000)
       .toISOString().replace('.000Z', 'Z');
     if (timestamp !== expected) {

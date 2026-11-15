@@ -6,7 +6,7 @@ import PlanningFlow from './PlanningFlow'
 import PlanningLocation from './PlanningLocation'
 import PlanningSubmit from './PlanningSubmit'
 import type { PlanningTimeRange } from './planning-time'
-import { initialLocationDraft, locationDraft, LOCATION_STORAGE_KEY, resolveLocation } from './planning-location'
+import { initialLocationDraft, locationDraft, LOCATION_STORAGE_KEY, rememberCustomLocation, resolveLocation } from './planning-location'
 import type { LunarLocation } from './planning-location'
 import SurfacePreview from './SurfacePreview'
 import { savedSurfaceSnapshot, startSurfaceSnapshot, SURFACE_PLAN_STORAGE_KEY } from './surface-plan'
@@ -29,9 +29,13 @@ const stars = Array.from({ length: 95 }, (_, index) => {
 })
 
 function App() {
+  const [recentLocations, setRecentLocations] = useState<LunarLocation[]>([])
   const [surface, setSurface] = useState(() => ({ snapshot: savedSurfaceSnapshot(), revision: 0 }))
   const openSurface = useCallback((timeline: TimelineResponse) => {
     const snapshot = startSurfaceSnapshot(timeline)
+    setRecentLocations(recent => rememberCustomLocation(recent, {
+      latitude: timeline.observer.latitudeDeg, longitude: timeline.observer.longitudeDeg,
+    }))
     try { sessionStorage.setItem(SURFACE_PLAN_STORAGE_KEY, JSON.stringify(snapshot)) } catch { /* The scene also works without storage. */ }
     setSurface(current => ({ snapshot, revision: current.revision + 1 }))
   }, [])
@@ -93,7 +97,7 @@ function App() {
             <PlanningTime embedded onPreviewTimeChange={setPreviewTime} onRangeChange={setTimeRange} />
           </section>
           <section id="location" className="flow-step flow-step-location" aria-labelledby="location-title" tabIndex={-1}>
-            <PlanningLocation value={siteDraft} onChange={setSiteDraft} />
+            <PlanningLocation value={siteDraft} onChange={setSiteDraft} recentLocations={recentLocations} />
           </section>
           {surface.snapshot && <section id="surface" className="flow-step flow-step-surface" aria-label="Moon surface" tabIndex={-1}>
             <SurfacePreview key={surface.revision} snapshot={surface.snapshot} />

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Mesh, MeshBasicMaterial, OrthographicCamera, Quaternion, Raycaster, SphereGeometry, Vector2, Vector3 } from 'three'
-import { locationFromPoint, locationNormal, normalizeLongitude, resolveLocation } from '../src/planning-location.ts'
+import { locationFromPoint, locationNormal, normalizeLongitude, rememberCustomLocation, resolveLocation } from '../src/planning-location.ts'
 import { frameMoonInViewport } from '../src/moon-viewport.ts'
 import { getHomeMoonState } from '../src/home-moon.ts'
 
@@ -12,6 +12,19 @@ test('coordinates accept global API coverage and normalize equivalent longitudes
     { latitude: '0', longitude: '361' }, { latitude: 'NaN', longitude: '0' }]) assert.equal(resolveLocation(draft).location, null)
   assert.equal(normalizeLongitude(180), -180)
   assert.equal(normalizeLongitude(360), 0)
+})
+
+test('custom location history keeps the latest submissions first without presets or equivalent duplicates', () => {
+  let recent = rememberCustomLocation([], { latitude: 15, longitude: 303 })
+  recent = rememberCustomLocation(recent, { latitude: 20, longitude: 10 })
+  recent = rememberCustomLocation(recent, { latitude: 15, longitude: -57 })
+  assert.deepEqual(recent, [{ latitude: 15, longitude: -57 }, { latitude: 20, longitude: 10 }])
+  assert.equal(rememberCustomLocation(recent, { latitude: 14, longitude: 303 }), recent)
+  assert.equal(rememberCustomLocation(recent, { latitude: 0.67416, longitude: 23.47314 }), recent)
+  for (let latitude = 30; latitude < 45; latitude++) recent = rememberCustomLocation(recent, { latitude, longitude: 0 })
+  assert.equal(recent.length, 10)
+  assert.equal(recent[0]!.latitude, 44)
+  assert.equal(recent.at(-1)!.latitude, 35)
 })
 
 test('coordinates use the Moon texture axes and round-trip across both poles and the longitude seam', () => {
