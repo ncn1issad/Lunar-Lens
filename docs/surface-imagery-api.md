@@ -1,8 +1,8 @@
 # Surface imagery API
 
 Implemented 2026-11-15. These endpoints supply imagery metadata and image tiles
-for surface views. Browser rendering and planning-input integration are separate
-from these API routes.
+for surface views. An initial [fixed surface preview](surface-preview.md) is
+implemented; connecting the scene to the planning inputs remains pending.
 
 ## Sources and responsibilities
 
@@ -124,9 +124,10 @@ lighting remain separate inputs.
 
 ## What is needed next
 
-The browser renderer can combine these imagery endpoints with the existing
-terrain manifest/binary tiles and Horizons positions. No server-generated 3D
-model is required.
+The [fixed surface preview](surface-preview.md) now uses these imagery endpoints,
+the existing terrain manifest/binary tiles, and captured Horizons positions for
+one Marius Hills observer and time. Connect it to the planning location and
+timeline inputs next. No server-generated 3D model is required.
 
 The layer contract is `GeographicImageryLayer` in `packages/contracts/src/imagery.ts`.
 The routes are in `apps/api/src/imagery.ts`. Offline API and bundled Worker tests

@@ -1,10 +1,17 @@
 # Moon rendering data
 
 Research checked on 2026-11-14. The first renderer now uses a sphere with the
-locally packaged 2K color map, drag rotation, and zoom on a black background.
+locally packaged 2K color map, drag rotation, and zoom on a Catppuccin Mocha
+space background. A soft presentation fill keeps the unlit surface visible.
 The home page derives current sunlight and lunar orientation from the browser
 clock with Astronomy Engine, in an Earth-centred, lunar-north-up view.
 The elevation and streaming data below remain candidates for future work.
+
+For the planning surface view, the current preference is on-demand imagery
+from Moon Trek or QuickMap through the API, alongside the project's existing
+elevation dataset and JPL Horizons. See the
+[surface imagery API](surface-imagery-api.md) for the implemented Moon Trek
+metadata/tile endpoints and their frontend contract.
 
 ## Proposed first implementation
 

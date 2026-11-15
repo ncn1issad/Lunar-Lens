@@ -1,8 +1,18 @@
 :root {
   color-scheme: dark;
-  background: #000;
-  color: #cdd6f4;
-  font-family: system-ui, sans-serif;
+  --crust: #11111b;
+  --mantle: #181825;
+  --base: #1e1e2e;
+  --text: #cdd6f4;
+  --subtext: #a6adc8;
+  --muted: #6c7086;
+  --lavender: #b4befe;
+  --mauve: #cba6f7;
+  background: var(--crust);
+  color: var(--text);
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
@@ -12,18 +22,89 @@
 html,
 body,
 #root {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  margin: 0;
+}
+
+::selection {
+  background: var(--mauve);
+  color: var(--crust);
+}
+
+a {
+  color: inherit;
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--lavender);
+  outline-offset: 6px;
+}
+
+.home-page {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+  overflow: clip;
+  background:
+    radial-gradient(ellipse at 24% 47%, #1e1e2e99, transparent 48%),
+    radial-gradient(ellipse at 85% 25%, #18182580, transparent 50%),
+    var(--crust);
+}
+
+.star-field {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
   width: 100%;
   height: 100%;
-  margin: 0;
-  overflow: hidden;
+  fill: var(--text);
+  pointer-events: none;
+}
+
+.site-footer {
+  width: min(100%, 1440px);
+  margin-inline: auto;
+  padding-inline: clamp(24px, 5.5vw, 88px);
+}
+
+.home-hero {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
+  align-items: center;
+  flex: 1;
+  width: min(100%, 1440px);
+  margin-inline: auto;
+  padding: 64px clamp(24px, 5.5vw, 88px);
+  gap: clamp(24px, 4vw, 72px);
+  pointer-events: none;
+}
+
+.moon-backdrop {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+}
+
+.hero-moon {
+  position: relative;
+  width: 100%;
+  height: clamp(380px, 65vh, 680px);
 }
 
 .moon-view {
   position: relative;
   width: 100%;
   height: 100%;
-  height: 100dvh;
-  background: #000;
 }
 
 .moon-view canvas {
@@ -38,6 +119,98 @@ body,
   cursor: grabbing;
 }
 
+.hero-copy {
+  padding-bottom: 10px;
+  pointer-events: auto;
+}
+
+.hero-brand {
+  display: flex;
+  align-items: center;
+  gap: clamp(20px, 2.5vw, 36px);
+  margin: 0;
+  font-size: clamp(56px, 6.2vw, 88px);
+  font-weight: 550;
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+.brand-logo {
+  flex: 0 0 auto;
+  width: clamp(88px, 9vw, 128px);
+  height: clamp(88px, 9vw, 128px);
+  overflow: visible;
+  color: var(--lavender);
+}
+
+.brand-name {
+  display: block;
+}
+
+.brand-name > span {
+  display: block;
+}
+
+.hero-copy p {
+  max-width: 355px;
+  margin: 26px 0 36px;
+  color: var(--subtext);
+  font-size: 17px;
+  line-height: 1.75;
+  letter-spacing: -0.15px;
+}
+
+.start-planning {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  min-height: 54px;
+  padding: 15px 23px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--lavender);
+  color: var(--crust);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.2px;
+  text-decoration: none;
+  transition: background 160ms ease;
+}
+
+.start-planning:hover {
+  background: var(--mauve);
+}
+
+.start-planning svg {
+  width: 20px;
+  height: 20px;
+}
+
+.site-footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  padding-block: 22px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.1px;
+  pointer-events: none;
+}
+
+.site-footer a {
+  pointer-events: auto;
+  text-decoration: none;
+  text-underline-offset: 4px;
+}
+
+.site-footer a:hover {
+  color: var(--subtext);
+  text-decoration: underline;
+}
+
 .moon-error {
   position: absolute;
   inset: 0;
@@ -45,5 +218,52 @@ body,
   place-content: center;
   margin: 0;
   padding: 24px;
+  color: var(--subtext);
+  font-size: 14px;
+  line-height: 1.6;
   text-align: center;
+}
+
+@media (min-width: 1600px) {
+  .home-hero {
+    gap: 100px;
+  }
+}
+
+@media (max-width: 760px) {
+  .home-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+    padding-top: 64px;
+    padding-bottom: 24px;
+  }
+
+  .hero-moon {
+    height: clamp(240px, 68vw, 390px);
+  }
+
+  .hero-copy {
+    width: min(100%, 440px);
+    margin-inline: auto;
+    padding-bottom: 0;
+  }
+
+  .hero-brand {
+    font-size: clamp(56px, 12vw, 76px);
+  }
+
+  .brand-logo {
+    width: clamp(88px, 20vw, 112px);
+    height: clamp(88px, 20vw, 112px);
+  }
+
+  .hero-copy p {
+    margin-top: 22px;
+    margin-bottom: 28px;
+    font-size: 16px;
+  }
+
+  .site-footer {
+    justify-content: flex-start;
+  }
 }

@@ -1,6 +1,28 @@
 import { Body, Illumination, RotationAxis } from 'astronomy-engine'
 import { Matrix4, Quaternion, Vector3 } from 'three'
 
+interface MoonState {
+  orientation: Quaternion
+  sunDirection: Vector3
+}
+
+/** Advance a date preview without flipping the light through the Moon's centre. */
+export function animateMoonState(current: MoonState, target: MoonState, elapsedMs: number) {
+  if (current.orientation.equals(target.orientation) && current.sunDirection.equals(target.sunDirection)) return false
+  if (current.orientation.angleTo(target.orientation) < 0.0001 && current.sunDirection.angleTo(target.sunDirection) < 0.0001) {
+    current.orientation.copy(target.orientation)
+    current.sunDirection.copy(target.sunDirection)
+    return true
+  }
+  // Keep the phase change visible for roughly three quarters of a second.
+  const blend = 1 - Math.exp(-Math.max(0, Math.min(elapsedMs, 64)) / 250)
+  current.orientation.slerp(target.orientation, blend)
+  const lightRotation = new Quaternion().setFromUnitVectors(current.sunDirection, target.sunDirection)
+  lightRotation.slerp(new Quaternion(), 1 - blend)
+  current.sunDirection.applyQuaternion(lightRotation).normalize()
+  return true
+}
+
 /** Earth-centred, lunar-north-up presentation for the home page, in UTC. */
 export function getHomeMoonState(date: Date) {
   const illumination = Illumination(Body.Moon, date)

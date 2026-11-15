@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-12-03T12:00:00Z",
+  "latitudeDeg": 14,
+  "longitudeDeg": 303,
+  "eyeHeightM": 2,
+  "groundElevationM": -1567.8416748046875,
+  "source": "NASA/JPL Horizons",
+  "positions": {
+    "earth": {
+      "azimuthDeg": 91.801363,
+      "elevationDeg": 26.405675,
+      "distanceKm": 387734.14249262505
+    },
+    "sun": {
+      "azimuthDeg": 258.097166,
+      "elevationDeg": 34.944125,
+      "distanceKm": 147296662.100174
+    }
+  }
+}
