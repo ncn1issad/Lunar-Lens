@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { after, afterEach, beforeEach, test } from 'node:test'
+import type { TestContext } from 'node:test'
 import { Window } from 'happy-dom'
 import type { TimelinePositions } from '@lunar-lense/contracts'
 import { visibilityGradient } from '../src/surface-timeline.ts'
@@ -9,7 +10,7 @@ for (const [name, value] of Object.entries({ window, document: window.document, 
   HTMLElement: window.HTMLElement, Node: window.Node, IS_REACT_ACT_ENVIRONMENT: true })) {
   Object.defineProperty(globalThis, name, { value, configurable: true, writable: true })
 }
-const { act, createElement } = await import('react')
+const { act, createElement, useState } = await import('react')
 const { createRoot } = await import('react-dom/client')
 const { default: SurfaceTimeline } = await import('../src/SurfaceTimeline.tsx')
 let root: ReturnType<typeof createRoot>
@@ -78,7 +79,117 @@ test('keyboard and assistive input commit without a pointer gesture', async () =
 test('older single-scene submissions show a disabled timeline', async () => {
   await act(async () => root.render(createElement(SurfaceTimeline, { positions: { earth: [positions().earth[0]!], sun: [positions().sun[0]!] }, selected: start, onSelect: time => commits.push(time) })))
   assert.equal(input.disabled, true)
+  assert.equal(host.querySelector('button')!.disabled, true)
   assert.match(input.title, /Submit a new time range/)
+})
+
+function ControlledTimeline({ initial }: { initial: number }) {
+  const [selected, setSelected] = useState(initial)
+  return createElement(SurfaceTimeline, { positions: positions(), selected, onSelect: time => {
+    commits.push(time)
+    setSelected(time)
+  } })
+}
+
+async function playback(context: TestContext, initial = start) {
+  let now = 0
+  context.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] })
+  context.mock.method(performance, 'now', () => now)
+  await act(async () => root.render(createElement(ControlledTimeline, { initial })))
+  input = host.querySelector('input')!
+  input.setPointerCapture = () => {}
+  return async (milliseconds: number) => {
+    now += milliseconds
+    await act(async () => context.mock.timers.tick(milliseconds))
+  }
+}
+
+async function togglePlayback() {
+  await act(async () => host.querySelector('button')!.click())
+}
+
+test('play advances at a fixed speed and pause and resume preserve the selected time', async context => {
+  const advance = await playback(context)
+  assert.equal(host.querySelector('button')!.getAttribute('aria-label'), 'Play timeline')
+  await togglePlayback()
+  await advance(10000)
+  assert.equal(commits.at(-1), start + 4 * 3600000)
+  assert.match(host.querySelector('output')!.textContent!, /16:00:00 UTC/)
+  assert.equal(host.querySelector('button')!.getAttribute('aria-label'), 'Pause timeline')
+  assert.equal(host.querySelector('.surface-timeline-overlay')!.getAttribute('data-intro-visible'), 'false')
+  assert.equal(host.querySelector('.surface-timeline-overlay')!.getAttribute('data-playing'), 'true')
+  await togglePlayback()
+  const count = commits.length
+  await advance(10000)
+  assert.equal(commits.length, count)
+  await togglePlayback()
+  await advance(5000)
+  assert.equal(commits.at(-1), start + 6 * 3600000)
+})
+
+test('play stops at the last sample and a second play restarts at the beginning', async context => {
+  const advance = await playback(context, end - 1000)
+  await togglePlayback()
+  await advance(100)
+  assert.equal(commits.at(-1), end)
+  assert.equal(host.querySelector('button')!.getAttribute('aria-label'), 'Play timeline')
+  const count = commits.length
+  await advance(1000)
+  assert.equal(commits.length, count)
+  await togglePlayback()
+  assert.equal(commits.at(-1), start)
+  await advance(100)
+  assert.equal(commits.at(-1), start + 144000)
+})
+
+test('pointer seeking pauses playback and still waits until release to commit', async context => {
+  const advance = await playback(context)
+  await togglePlayback()
+  await advance(1000)
+  const count = commits.length
+  await pointer('pointerdown')
+  await change(start + 3600000)
+  await advance(1000)
+  assert.equal(commits.length, count)
+  assert.equal(host.querySelector('button')!.getAttribute('aria-label'), 'Play timeline')
+  await pointer('pointerup')
+  assert.equal(commits.at(-1), start + 3600000)
+  await advance(1000)
+  assert.equal(commits.length, count + 1)
+})
+
+test('keyboard seeking pauses playback at the chosen time', async context => {
+  const advance = await playback(context)
+  await togglePlayback()
+  await advance(1000)
+  await change(start + 7200000)
+  const count = commits.length
+  await advance(1000)
+  assert.equal(commits.length, count)
+  assert.equal(commits.at(-1), start + 7200000)
+  assert.equal(host.querySelector('button')!.getAttribute('aria-label'), 'Play timeline')
+})
+
+test('unmounting the timeline cancels playback', async context => {
+  const advance = await playback(context)
+  await togglePlayback()
+  await advance(1000)
+  const count = commits.length
+  await act(async () => root.render(null))
+  await advance(10000)
+  assert.equal(commits.length, count)
+})
+
+test('hiding the browser tab pauses playback', async context => {
+  const advance = await playback(context)
+  await togglePlayback()
+  await advance(1000)
+  const count = commits.length
+  context.mock.getter(document, 'hidden', () => true)
+  await act(async () => document.dispatchEvent(new window.Event('visibilitychange') as never))
+  await advance(1000)
+  assert.equal(commits.length, count)
+  assert.equal(host.querySelector('button')!.getAttribute('aria-label'), 'Play timeline')
 })
 
 

@@ -14,7 +14,11 @@ import { plannedTerrain } from './surface-terrain'
 import type { SurfacePlan } from './surface-plan'
 import { surfaceSnapshotAt } from './surface-plan'
 import SurfaceTimeline from './SurfaceTimeline'
+import { surfaceIndicatorPosition } from './surface-indicators'
 import './surface-preview.css'
+
+// A faint 5% gray keeps unlit terrain and Earth's night side visible.
+const nightFillColor = 0x0d0d0d
 
 async function json<T>(url: string, signal: AbortSignal): Promise<T> {
   const response = await fetch(url, { signal })
@@ -24,6 +28,7 @@ async function json<T>(url: string, signal: AbortSignal): Promise<T> {
 
 function SurfaceScene({ snapshot, selected }: { snapshot: SurfaceSnapshot; selected: SurfaceSnapshot }) {
   const hostRef = useRef<HTMLDivElement>(null)
+  const indicatorsRef = useRef<SVGSVGElement>(null)
   const selectedRef = useRef(selected)
   const updateTimeRef = useRef<(value: SurfaceSnapshot) => void>(() => {})
   const [status, setStatus] = useState<string | null>('Loading lunar terrain...')
@@ -52,10 +57,10 @@ function SurfaceScene({ snapshot, selected }: { snapshot: SurfaceSnapshot; selec
       }
       if (disposed) return
 
-      const renderer = new WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true })
+      const renderer = new WebGLRenderer({ antialias: true, alpha: true, logarithmicDepthBuffer: true })
       keep({ dispose() { renderer.dispose(); renderer.forceContextLoss() } })
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
-      renderer.setClearColor(0x000000)
+      renderer.setClearColor(0x000000, 0)
       renderer.autoClear = false
       renderer.shadowMap.enabled = true
       renderer.shadowMap.type = PCFSoftShadowMap
@@ -87,7 +92,7 @@ function SurfaceScene({ snapshot, selected }: { snapshot: SurfaceSnapshot; selec
       const texture = keep(new CanvasTexture(atlas))
       texture.colorSpace = SRGBColorSpace
       texture.anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy())
-      const material = keep(new MeshStandardMaterial({ map: texture, roughness: 1, metalness: 0 }))
+      const material = keep(new MeshStandardMaterial({ map: texture, roughness: 1, metalness: 0, emissive: nightFillColor }))
       const ground = new Mesh(geometry, material)
       ground.castShadow = true
       ground.receiveShadow = true
@@ -112,7 +117,7 @@ function SurfaceScene({ snapshot, selected }: { snapshot: SurfaceSnapshot; selec
       const earthDirection = new Vector3(...skyDirection(snapshot.positions.earth.azimuthDeg, snapshot.positions.earth.elevationDeg))
       const earth = new Mesh(
         keep(new SphereGeometry(1000 * 6378.137 / snapshot.positions.earth.distanceKm, 64, 32)),
-        keep(new MeshStandardMaterial({ roughness: 1 })),
+        keep(new MeshStandardMaterial({ roughness: 1, emissive: nightFillColor })),
       )
       earth.position.copy(earthDirection).multiplyScalar(1000)
       earth.rotation.z = 23.44 * Math.PI / 180
@@ -131,6 +136,36 @@ function SurfaceScene({ snapshot, selected }: { snapshot: SurfaceSnapshot; selec
 
       let yaw = snapshot.positions.earth.azimuthDeg - 12
       let pitch = 0
+      const markers = [...indicatorsRef.current!.querySelectorAll<SVGGElement>('[data-body]')]
+      const markerDirection = new Vector3()
+      const updateIndicators = () => {
+        const width = host.clientWidth, height = host.clientHeight
+        if (!width || !height) return
+        indicatorsRef.current!.setAttribute('viewBox', `0 0 ${width} ${height}`)
+        const positions = [earthDirection, sunDirection].map(direction => {
+          markerDirection.copy(direction).applyQuaternion(skyCamera.quaternion.clone().invert())
+          return surfaceIndicatorPosition(markerDirection.toArray(), width, height, skyCamera.fov)
+        })
+        positions.forEach((position, index) => {
+          const marker = markers[index]!
+          const { x, y, offscreen, angle } = position
+          const other = positions[1 - index]!
+          const crowded = index === 1 && Math.abs(x - other.x) < 120 && Math.abs(y - other.y) < 72
+          const horizontal = x > width - 124 ? -1 : 1
+          const vertical = y < 84 ? 1 : -1
+          const elbow = crowded ? 62 : 34
+          marker.removeAttribute('visibility')
+          marker.setAttribute('transform', `translate(${x} ${y})`)
+          marker.setAttribute('data-offscreen', String(offscreen))
+          marker.setAttribute('aria-label', `${index === 0 ? 'Earth' : 'Sun'}${offscreen ? ', off screen' : ''}`)
+          marker.querySelector('.surface-indicator-line')!.setAttribute('d', `M0 0 L${horizontal * 20} ${vertical * elbow} H${horizontal * 104}`)
+          const label = marker.querySelector('text')!
+          label.setAttribute('x', String(horizontal * 28))
+          label.setAttribute('y', String(vertical * elbow + 17))
+          label.setAttribute('text-anchor', horizontal === 1 ? 'start' : 'end')
+          marker.querySelector('.surface-indicator-arrow')!.setAttribute('transform', `rotate(${angle})`)
+        })
+      }
       const render = () => {
         if (disposed) return
         camera.lookAt(camera.position.clone().add(new Vector3(...skyDirection(yaw, pitch))))
@@ -139,6 +174,7 @@ function SurfaceScene({ snapshot, selected }: { snapshot: SurfaceSnapshot; selec
         renderer.render(sky, skyCamera)
         renderer.clearDepth()
         renderer.render(scene, camera)
+        updateIndicators()
       }
       const resetView = () => {
         yaw = selectedRef.current.positions.earth.azimuthDeg
@@ -256,6 +292,16 @@ function SurfaceScene({ snapshot, selected }: { snapshot: SurfaceSnapshot; selec
   return (
     <>
       <div className="surface-canvas" ref={hostRef} />
+      <svg className="surface-indicators" ref={indicatorsRef} aria-label="Sun and Earth directions">
+        {(['earth', 'sun'] as const).map(body => (
+          <g key={body} className={`surface-indicator surface-indicator-${body}`} data-body={body} visibility="hidden" role="img">
+            <path className="surface-indicator-line" />
+            <circle className="surface-indicator-dot" r="2.5" />
+            <path className="surface-indicator-arrow" d="M-7 -4 L0 0 L-7 4" />
+            <text>{body === 'earth' ? 'Earth' : 'Sun'}</text>
+          </g>
+        ))}
+      </svg>
       {status && <div className="surface-loading" role="status" aria-label={status}><span /></div>}
       {error && <p className="surface-error" role="alert">{error}</p>}
     </>

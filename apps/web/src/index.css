@@ -8,6 +8,10 @@
   --muted: #6c7086;
   --lavender: #b4befe;
   --mauve: #cba6f7;
+  --page-background:
+    radial-gradient(ellipse at 24% 47%, #1e1e2e99, transparent 48%),
+    radial-gradient(ellipse at 85% 25%, #18182580, transparent 50%),
+    var(--crust);
   background: var(--crust);
   color: var(--text);
   font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
@@ -53,10 +57,7 @@ button:focus-visible {
   flex-direction: column;
   min-height: 100svh;
   overflow: clip;
-  background:
-    radial-gradient(ellipse at 24% 47%, #1e1e2e99, transparent 48%),
-    radial-gradient(ellipse at 85% 25%, #18182580, transparent 50%),
-    var(--crust);
+  background: var(--page-background);
 }
 
 .star-field {
