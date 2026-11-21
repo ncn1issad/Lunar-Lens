@@ -38,12 +38,13 @@ function SectionIcon({ section }: { section: 'dates' | 'times' }) {
   </svg>
 }
 
-export default function PlanningTime({ embedded = false, onPreviewTimeChange, onRangeChange }: {
+export default function PlanningTime({ embedded = false, initialValue, onPreviewTimeChange, onRangeChange }: {
   embedded?: boolean
+  initialValue?: PlanningTimeRange
   onPreviewTimeChange?: (timestamp: number) => void
   onRangeChange?: (range: PlanningTimeRange) => void
 }) {
-  const [value, setValue] = useState(initialRange)
+  const [value, setValue] = useState(() => initialValue ?? initialRange())
   const [selectedDay, setSelectedDay] = useState(() => value.endDate ?? value.startDate)
   const [hoveredDay, setHoveredDay] = useState<string | null>(null)
   const hoverTimer = useRef<number | null>(null)

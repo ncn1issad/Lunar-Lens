@@ -7,15 +7,16 @@ import { planningScrollLayout, resizePlanningScroll, SECTION_LINK_SECONDS, settl
 
 gsap.registerPlugin(ScrollTrigger, ScrollToPlugin)
 
-const allSteps = [{ id: 'home', label: 'Home' }, { id: 'planner', label: 'Planner' }, { id: 'surface', label: 'Surface' }] as const
+const allSteps = [{ id: 'home', label: 'Home' }, { id: 'planner', label: 'Planner' }, { id: 'location', label: 'Location' }, { id: 'surface', label: 'Surface' }] as const
 type StepId = typeof allSteps[number]['id']
 const clamp = (value: number) => Math.max(0, Math.min(1, value))
 
-export default function PlanningFlow({ children, backdrop, onProgressChange, onStepChange, surfaceAvailable = false, surfaceRevision = 0 }: {
+export default function PlanningFlow({ children, backdrop, onProgressChange, onStepChange, splitPlanner = false, surfaceAvailable = false, surfaceRevision = 0 }: {
   children: ReactNode
   backdrop?: ReactNode
   onProgressChange?: (progress: number) => void
   onStepChange?: (step: StepId) => void
+  splitPlanner?: boolean
   surfaceAvailable?: boolean
   surfaceRevision?: number
 }) {
@@ -26,7 +27,11 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
   const targetRef = useRef<(id: StepId, behavior: ScrollBehavior, focus: boolean) => void>(() => {})
   const pendingFocusRef = useRef<StepId | null>(null)
   const [active, setActive] = useState<StepId>('home')
-  const steps = useMemo(() => allSteps.filter(step => step.id !== 'surface' || surfaceAvailable), [surfaceAvailable])
+  const activeRef = useRef<StepId>('home')
+  const previousSplitRef = useRef(splitPlanner)
+  const steps = useMemo(() => allSteps
+    .filter(step => (step.id !== 'surface' || surfaceAvailable) && (step.id !== 'location' || splitPlanner))
+    .map(step => ({ ...step, label: step.id === 'planner' && splitPlanner ? 'Time' : step.label })), [surfaceAvailable, splitPlanner])
   useLayoutEffect(() => { callbacksRef.current = { onProgressChange, onStepChange } })
   const goTo = useCallback((id: StepId, behavior: ScrollBehavior = 'smooth', focus = false) => {
     targetRef.current(id, behavior, focus)
@@ -37,6 +42,9 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
     const track = trackRef.current
     if (!viewport || !track) return
     const sections = [...track.querySelectorAll<HTMLElement>('.flow-step')]
+    const previousStep = activeRef.current
+    const splitChanged = previousSplitRef.current !== splitPlanner
+    previousSplitRef.current = splitPlanner
     const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
     let layout = planningScrollLayout(viewport.clientHeight, steps.length)
     let timeline: gsap.core.Timeline
@@ -59,7 +67,6 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
       if (refreshing) return
       const phase = motionQuery.matches ? Math.round(playhead.phase) : playhead.phase
       const planning = clamp(phase)
-      const surface = clamp(phase - 1)
       const current = steps[Math.min(steps.length - 1, Math.round(phase))].id
       callbacksRef.current.onProgressChange?.(planning)
       for (const section of sections) {
@@ -67,12 +74,15 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
         let x = 0
         let y = 0
         if (section.id === 'home') { opacity = 1 - planning; y = -48 * planning }
-        if (section.id === 'planner') {
-          opacity = planning * (1 - surface)
-          x = 64 * (1 - planning)
-          y = -32 * surface
+        const id = section.id === 'location' && !splitPlanner ? 'planner' : section.id
+        const index = steps.findIndex(step => step.id === id)
+        if (index > 0) {
+          const entering = clamp(phase - index + 1)
+          const leaving = clamp(phase - index)
+          opacity = entering * (1 - leaving)
+          x = id === 'surface' ? 0 : 64 * (1 - entering)
+          y = id === 'surface' ? 48 * (1 - entering) : -32 * leaving
         }
-        if (section.id === 'surface') { opacity = surface; y = 48 * (1 - surface) }
         section.style.opacity = String(opacity)
         section.style.visibility = opacity > 0.001 ? 'visible' : 'hidden'
         section.style.transform = `translate3d(${x}px, ${y}px, 0)`
@@ -83,6 +93,7 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
       }
       if (current !== lastActive) {
         lastActive = current
+        activeRef.current = current
         setActive(current)
       }
       const pending = pendingFocusRef.current
@@ -141,7 +152,13 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
           scrollTo: { y: top, autoKill: true, onAutoKill: stopNavigation },
           duration: SECTION_LINK_SECONDS,
           ease: 'sine.inOut',
-          onComplete: () => { navigationTween = null },
+          onComplete: () => {
+            navigationTween = null
+            // Preserve the destination if the layout changes before the next scroll event.
+            trigger.update()
+            timeline.time(Math.min(viewport.scrollTop, layout.distance))
+            render()
+          },
         })
         return
       }
@@ -180,7 +197,7 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
     const onPreferenceChange = () => { stopNavigation(); build(); render() }
     const onLocationChange = () => {
       const hash = window.location.hash.slice(1)
-      const id = hash === 'plan' || hash === 'location' ? 'planner' : hash
+      const id = hash === 'plan' || (hash === 'location' && !splitPlanner) ? 'planner' : hash
       const step = steps.find(step => step.id === id) ?? steps[0]
       if (id !== hash) window.history.replaceState(null, '', `#${id}`)
       goTo(step.id, 'instant')
@@ -196,6 +213,11 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
 
     measure()
     build()
+    if (splitChanged) {
+      const id = previousStep === 'location' && !splitPlanner ? 'planner' : previousStep
+      goTo(id, 'instant')
+      if (window.location.hash === '#location' && !splitPlanner) window.history.replaceState(null, '', '#planner')
+    }
     const observer = new ResizeObserver(onResize)
     observer.observe(viewport)
     if (viewport.parentElement) observer.observe(viewport.parentElement)
@@ -219,7 +241,7 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
       window.removeEventListener('popstate', onLocationChange)
       motionQuery.removeEventListener('change', onPreferenceChange)
     }
-  }, [goTo, steps])
+  }, [goTo, steps, splitPlanner])
 
   useEffect(() => {
     if (!surfaceAvailable || surfaceRevision === 0) return
@@ -229,9 +251,10 @@ export default function PlanningFlow({ children, backdrop, onProgressChange, onS
 
   useEffect(() => {
     document.title = active === 'surface' ? 'Moon surface | Lunar Lens'
-      : active === 'planner' ? 'Planner | Lunar Lens' : 'Lunar Lens'
+      : active === 'location' ? 'Location | Lunar Lens'
+      : active === 'planner' ? `${splitPlanner ? 'Time' : 'Planner'} | Lunar Lens` : 'Lunar Lens'
     callbacksRef.current.onStepChange?.(active)
-  }, [active])
+  }, [active, splitPlanner])
 
   const navigate = (event: MouseEvent<HTMLAnchorElement>, id: StepId) => {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return

@@ -27,13 +27,6 @@ export function sameLocation(a: LunarLocation, b: LunarLocation) {
     && Math.abs(normalizeLongitude(a.longitude - b.longitude)) < 0.00001
 }
 
-export function rememberCustomLocation(recent: LunarLocation[], location: LunarLocation): LunarLocation[] {
-  if (locationPresets.some(preset => sameLocation(preset, location))) return recent
-  const draft = locationDraft(location)
-  const next = { latitude: Number(draft.latitude), longitude: normalizeLongitude(Number(draft.longitude)) }
-  return [next, ...recent.filter(previous => !sameLocation(previous, next))].slice(0, 10)
-}
-
 export function resolveLocation(draft: LocationDraft): { location: LunarLocation | null; error: string | null } {
   if (!draft.latitude.trim() || !draft.longitude.trim()) return { location: null, error: 'Enter latitude and longitude.' }
   const latitude = Number(draft.latitude), longitude = Number(draft.longitude)

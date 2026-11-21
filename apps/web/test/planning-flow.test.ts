@@ -54,11 +54,13 @@ function find<T extends Element = HTMLElement>(selector: string): T {
   return element
 }
 const onProgressChange = (progress: number) => { progressChanges.push(progress) }
-function flow(surfaceAvailable = true, surfaceRevision = 0) {
-  return createElement(PlanningFlow, { backdrop: createElement('canvas', { 'aria-label': 'Moon scene' }), onProgressChange, surfaceAvailable, surfaceRevision },
+function flow(surfaceAvailable = true, surfaceRevision = 0, splitPlanner = false) {
+  return createElement(PlanningFlow, { backdrop: createElement('canvas', { 'aria-label': 'Moon scene' }), onProgressChange, surfaceAvailable, surfaceRevision, splitPlanner },
     createElement('section', { id: 'home', className: 'flow-step', tabIndex: -1 }, createElement('a', { href: '#planner' }, 'Start planning')),
     createElement('section', { id: 'planner', className: 'flow-step', tabIndex: -1 },
       createElement('input', { 'aria-label': 'Retained time', defaultValue: '09:30' }),
+      createElement('a', { href: '#location' }, 'Continue to location')),
+    createElement('section', { id: 'location', className: 'flow-step', tabIndex: -1 },
       createElement('input', { 'aria-label': 'Lunar latitude', defaultValue: '14' })),
     surfaceAvailable && createElement('section', { id: 'surface', className: 'flow-step', tabIndex: -1 }, 'Submitted Moon surface'),
   )
@@ -159,9 +161,10 @@ test('Planner keeps both time and location controls together and hides them on S
   await scroll(targets[1])
   assert.equal(find('#home').inert, true)
   assert.equal(find('#planner').inert, false)
-  assert.equal(find('#planner').querySelectorAll('input').length, 2)
+  assert.equal(find('#location').inert, false)
   await scroll(targets[2])
   assert.equal(find('#planner').inert, true)
+  assert.equal(find('#location').inert, true)
   assert.equal(find('#surface').inert, false)
   assert.equal(find<HTMLElement>('.flow-navigation').hidden, true)
 })
@@ -295,17 +298,64 @@ test('resizing keeps the current section and unmounting cleans up its ScrollTrig
   assert.equal(ScrollTrigger.getAll().length, 0)
 })
 
-test('phone layouts keep both Planner controls in the same section', async () => {
-  await act(async () => root.render(null))
+test('narrow layouts navigate through Time and Location separately and retain both inputs', async () => {
   window.happyDOM.setWindowSize({ width: 390, height: 844 })
-  await act(async () => root.render(flow()))
-  viewport = find<HTMLDivElement>('.flow-viewport')
-  await scroll(targets[1])
+  await act(async () => root.render(flow(true, 0, true)))
+  const narrowTargets = planningScrollLayout(height, 4).targets
+  const time = find<HTMLInputElement>('#planner input')
+  const location = find<HTMLInputElement>('#location input')
+  time.value = '12:45'
+  assert.deepEqual([...container.querySelectorAll('.flow-navigation a')].map(link => link.textContent), ['Home', 'Time', 'Location', 'Surface'])
+  await clickLink('#home a')
   assert.equal(find('#planner').inert, false)
-  assert.equal(find('#planner').style.visibility, 'visible')
-  assert.equal(find('#planner').querySelectorAll('input').length, 2)
-  await scroll(targets[0])
+  assert.equal(find('#location').inert, true)
+  assert.equal(window.document.title, 'Time | Lunar Lens')
+  await clickLink('#planner a')
+  assert.equal(viewport.scrollTop, narrowTargets[2])
   assert.equal(find('#planner').inert, true)
+  assert.equal(find('#location').inert, false)
+  assert.equal(window.document.activeElement?.id, 'location')
+  assert.equal(window.document.title, 'Location | Lunar Lens')
+  await clickLink('.flow-navigation a[href="#planner"]')
+  assert.equal(find<HTMLInputElement>('#planner input'), time)
+  assert.equal(time.value, '12:45')
+  assert.equal(find('#location input'), location)
+  await scroll(narrowTargets[3])
+  assert.equal(find('#surface').inert, false)
+  assert.equal(find('#location').inert, true)
+})
+
+test('changing between combined and split stages preserves the current stage and inputs', async () => {
+  await clickLink('.flow-navigation a[href="#surface"]')
+  const input = find('input')
+  await act(async () => root.render(flow(true, 0, true)))
+  assert.equal(viewport.scrollTop, planningScrollLayout(height, 4).targets[3])
+  assert.equal(find('#surface').inert, false)
+  await clickLink('.flow-navigation a[href="#location"]')
+  assert.equal(viewport.scrollTop, planningScrollLayout(height, 4).targets[2])
+  assert.equal(find('#location').inert, false)
+  assert.equal(window.document.title, 'Location | Lunar Lens')
+  await act(async () => root.render(flow()))
+  assert.equal(viewport.scrollTop, targets[1])
+  assert.equal(window.location.hash, '#planner')
+  assert.equal(find('#planner').inert, false)
+  assert.equal(find('#location').inert, false)
+  assert.equal(find('input'), input)
+})
+
+test('Location deep links and successful submissions use the split stage targets', async () => {
+  await act(async () => root.render(flow(true, 0, true)))
+  await act(async () => {
+    window.history.replaceState(null, '', '#location')
+    window.dispatchEvent(new window.PopStateEvent('popstate'))
+  })
+  assert.equal(window.location.hash, '#location')
+  assert.equal(viewport.scrollTop, planningScrollLayout(height, 4).targets[2])
+  assert.equal(find('#location').inert, false)
+  await act(async () => root.render(flow(true, 1, true)))
+  await finishNavigation()
+  assert.equal(viewport.scrollTop, planningScrollLayout(height, 4).targets[3])
+  assert.equal(find('#surface').inert, false)
 })
 
 test('reduced motion removes smooth navigation, tweened panels, and automatic settling', async () => {

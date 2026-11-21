@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Mesh, MeshBasicMaterial, OrthographicCamera, Quaternion, Raycaster, SphereGeometry, Vector2, Vector3 } from 'three'
-import { locationFromPoint, locationNormal, normalizeLongitude, rememberCustomLocation, resolveLocation } from '../src/planning-location.ts'
+import { locationFromPoint, locationNormal, normalizeLongitude, resolveLocation } from '../src/planning-location.ts'
+import type { TimelineResponse } from '@lunar-lense/contracts'
+import { matchesRecentPlan, rememberPlan } from '../src/recent-plans.ts'
 import { frameMoonInViewport } from '../src/moon-viewport.ts'
 import { getHomeMoonState } from '../src/home-moon.ts'
 
@@ -14,17 +16,34 @@ test('coordinates accept global API coverage and normalize equivalent longitudes
   assert.equal(normalizeLongitude(360), 0)
 })
 
-test('custom location history keeps the latest submissions first without presets or equivalent duplicates', () => {
-  let recent = rememberCustomLocation([], { latitude: 15, longitude: 303 })
-  recent = rememberCustomLocation(recent, { latitude: 20, longitude: 10 })
-  recent = rememberCustomLocation(recent, { latitude: 15, longitude: -57 })
-  assert.deepEqual(recent, [{ latitude: 15, longitude: -57 }, { latitude: 20, longitude: 10 }])
-  assert.equal(rememberCustomLocation(recent, { latitude: 14, longitude: 303 }), recent)
-  assert.equal(rememberCustomLocation(recent, { latitude: 0.67416, longitude: 23.47314 }), recent)
-  for (let latitude = 30; latitude < 45; latitude++) recent = rememberCustomLocation(recent, { latitude, longitude: 0 })
+test('history distinguishes dates at the same site and moves equivalent repeated scenarios to the top', () => {
+  const response = (latitudeDeg: number, longitudeDeg: number, day = '15') => ({
+    observer: { latitudeDeg, longitudeDeg },
+    range: { start: `2026-11-${day}T09:30:00Z`, end: `2026-11-${day}T10:45:00Z` },
+    positions: {
+      earth: ['09:30', '10:30'].map(time => ({ timestamp: `2026-11-${day}T${time}:00Z`, isVisible: true })),
+      sun: ['09:30', '10:30'].map(time => ({ timestamp: `2026-11-${day}T${time}:00Z`, isVisible: false })),
+    },
+  }) as TimelineResponse
+  let recent = rememberPlan([], response(14, 303))
+  recent = rememberPlan(recent, response(14, -57, '16'))
+  recent = rememberPlan(recent, response(14, -57))
+  assert.equal(recent.length, 2)
+  assert.equal(recent[0]!.location.longitude, -57)
+  assert.equal(recent[0]!.range.startDate, '2026-11-15')
+  assert.equal(recent[1]!.range.startDate, '2026-11-16')
+  // Preserve the requested end, even when it falls after the final hourly sample.
+  assert.equal(recent[0]!.range.endTime, '10:45')
+  assert.equal(recent[0]!.visibility, 'linear-gradient(to right, #b4befe 0% 100%)')
+  assert.equal(matchesRecentPlan(recent[0]!, { latitude: 14, longitude: 303 }, recent[0]!.range), true)
+  assert.equal(matchesRecentPlan(recent[0]!, recent[0]!.location, recent[1]!.range), false)
+  assert.equal(matchesRecentPlan(recent[0]!, recent[0]!.location, null), false)
+  recent = rememberPlan(recent, response(0.67416, 23.47314))
+  assert.equal(recent.length, 3, 'Submitted presets also belong in history')
+  for (let latitude = 30; latitude < 45; latitude++) recent = rememberPlan(recent, response(latitude, 0))
   assert.equal(recent.length, 10)
-  assert.equal(recent[0]!.latitude, 44)
-  assert.equal(recent.at(-1)!.latitude, 35)
+  assert.equal(recent[0]!.location.latitude, 44)
+  assert.equal(recent.at(-1)!.location.latitude, 35)
 })
 
 test('coordinates use the Moon texture axes and round-trip across both poles and the longitude seam', () => {
